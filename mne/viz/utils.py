@@ -937,6 +937,7 @@ def _handle_change_selection(event, params):
 
 def _plot_raw_onkey(event, params):
     """Interpret key presses."""
+    print(event.key)
     import matplotlib.pyplot as plt
     if event.key == params['close_key']:
         plt.close(params['fig'])
@@ -963,7 +964,7 @@ def _plot_raw_onkey(event, params):
         _plot_raw_time(value, params)
         params['update_fun']()
         params['plot_fun']()
-    elif event.key == 'shift+right':
+    elif event.key == 'alt+right':
         value = params['t_start'] + params['duration']
         _plot_raw_time(value, params)
         params['update_fun']()
@@ -973,7 +974,7 @@ def _plot_raw_onkey(event, params):
         _plot_raw_time(value, params)
         params['update_fun']()
         params['plot_fun']()
-    elif event.key == 'shift+left':
+    elif event.key == 'alt+left':
         value = params['t_start'] - params['duration']
         _plot_raw_time(value, params)
         params['update_fun']()
