@@ -937,7 +937,6 @@ def _handle_change_selection(event, params):
 
 def _plot_raw_onkey(event, params):
     """Interpret key presses."""
-    print(event.key)
     import matplotlib.pyplot as plt
     if event.key == params['close_key']:
         plt.close(params['fig'])
