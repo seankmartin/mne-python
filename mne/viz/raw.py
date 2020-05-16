@@ -282,6 +282,7 @@ def plot_raw(raw, events=None, duration=10.0, start=0.0, n_channels=20,
     """
     import matplotlib as mpl
     from ..io.base import BaseRaw
+    mpl.use("qt5agg")
     color = _handle_default('color', color)
     scalings = _compute_scalings(scalings, raw, remove_dc=remove_dc,
                                  duration=duration)

@@ -963,7 +963,7 @@ def _plot_raw_onkey(event, params):
         _plot_raw_time(value, params)
         params['update_fun']()
         params['plot_fun']()
-    elif event.key == 'alt+right':
+    elif event.key == 'shift+right':
         value = params['t_start'] + params['duration']
         _plot_raw_time(value, params)
         params['update_fun']()
@@ -973,7 +973,7 @@ def _plot_raw_onkey(event, params):
         _plot_raw_time(value, params)
         params['update_fun']()
         params['plot_fun']()
-    elif event.key == 'alt+left':
+    elif event.key == 'shift+left':
         value = params['t_start'] - params['duration']
         _plot_raw_time(value, params)
         params['update_fun']()
