@@ -13,6 +13,7 @@ import platform
 import shutil
 import sys
 import tempfile
+import re
 
 import numpy as np
 
@@ -64,6 +65,7 @@ def set_memmap_min_size(memmap_min_size):
 
 # List the known configuration values
 known_config_types = (
+    'MNE_3D_OPTION_ANTIALIAS',
     'MNE_BROWSE_RAW_SIZE',
     'MNE_CACHE_DIR',
     'MNE_COREG_ADVANCED_RENDERING',
@@ -71,6 +73,7 @@ known_config_types = (
     'MNE_COREG_GUESS_MRI_SUBJECT',
     'MNE_COREG_HEAD_HIGH_RES',
     'MNE_COREG_HEAD_OPACITY',
+    'MNE_COREG_HEAD_INSIDE',
     'MNE_COREG_INTERACTION',
     'MNE_COREG_MARK_INSIDE',
     'MNE_COREG_PREPARE_BEM',
@@ -87,6 +90,7 @@ known_config_types = (
     'MNE_DATA',
     'MNE_DATASETS_BRAINSTORM_PATH',
     'MNE_DATASETS_EEGBCI_PATH',
+    'MNE_DATASETS_EPILEPSY_ECOG_PATH',
     'MNE_DATASETS_HF_SEF_PATH',
     'MNE_DATASETS_MEGSIM_PATH',
     'MNE_DATASETS_MISC_PATH',
@@ -104,6 +108,10 @@ known_config_types = (
     'MNE_DATASETS_FIELDTRIP_CMC_PATH',
     'MNE_DATASETS_PHANTOM_4DBTI_PATH',
     'MNE_DATASETS_LIMO_PATH',
+    'MNE_DATASETS_REFMEG_NOISE_PATH',
+    'MNE_DATASETS_SSVEP_PATH',
+    'MNE_DATASETS_ERP_CORE_PATH',
+    'MNE_DATASETS_EPILEPSY_ECOG_PATH',
     'MNE_FORCE_SERIAL',
     'MNE_KIT2FIFF_STIM_CHANNELS',
     'MNE_KIT2FIFF_STIM_CHANNEL_CODING',
@@ -115,6 +123,7 @@ known_config_types = (
     'MNE_SKIP_NETWORK_TESTS',
     'MNE_SKIP_TESTING_DATASET_TESTS',
     'MNE_STIM_CHANNEL',
+    'MNE_TQDM',
     'MNE_USE_CUDA',
     'MNE_USE_NUMBA',
     'SUBJECTS_DIR',
@@ -418,9 +427,10 @@ def _get_root_dir():
 
 def _get_numpy_libs():
     from ._testing import SilenceStdout
-    with SilenceStdout() as capture:
+    with SilenceStdout(close=False) as capture:
         np.show_config()
     lines = capture.getvalue().split('\n')
+    capture.close()
     libs = []
     for li, line in enumerate(lines):
         for key in ('lapack', 'blas'):
@@ -459,30 +469,43 @@ def sys_info(fid=None, show_paths=False):
 
         >>> import mne
         >>> mne.sys_info() # doctest: +SKIP
-        Platform:      Linux-5.0.0-1031-gcp-x86_64-with-glibc2.2.5
-        Python:        3.8.1 (default, Dec 20 2019, 10:06:11)  [GCC 7.4.0]
-        Executable:    /home/travis/virtualenv/python3.8.1/bin/python
-        CPU:           x86_64: 2 cores
-        Memory:        7.8 GB
+        Platform:      Linux-4.15.0-1067-aws-x86_64-with-glibc2.2.5
+        Python:        3.8.1 (default, Feb  2 2020, 08:37:37)  [GCC 8.3.0]
+        Executable:    /usr/local/bin/python
+        CPU:           : 36 cores
+        Memory:        68.7 GB
 
         mne:           0.21.dev0
-        numpy:         1.19.0.dev0+8dfaa4a {blas=openblas, lapack=openblas}
-        scipy:         1.5.0.dev0+f614064
-        matplotlib:    3.2.1 {backend=Qt5Agg}
+        numpy:         1.19.0 {blas=openblas, lapack=openblas}
+        scipy:         1.5.1
+        matplotlib:    3.2.2 {backend=Qt5Agg}
 
-        sklearn:       0.22.2.post1
-        numba:         0.49.0
-        nibabel:       3.1.0
-        cupy:          Not found
-        pandas:        1.0.3
+        sklearn:       0.23.1
+        numba:         0.50.1
+        nibabel:       3.1.1
+        nilearn:       0.7.0
         dipy:          1.1.1
-        mayavi:        4.7.2.dev0
-        pyvista:       0.24.1
-        vtk:           9.0.0
-        PyQt5:         5.14.1
+        cupy:          Not found
+        pandas:        1.0.5
+        mayavi:        Not found
+        pyvista:       0.25.3 {pyvistaqt=0.1.1, OpenGL 3.3 (Core Profile) Mesa 18.3.6 via llvmpipe (LLVM 7.0, 256 bits)}
+        vtk:           9.0.1
+        PyQt5:         5.15.0
     """  # noqa: E501
     ljust = 15
-    out = 'Platform:'.ljust(ljust) + platform.platform() + '\n'
+    platform_str = platform.platform()
+    if platform.system() == 'Darwin' and sys.version_info[:2] < (3, 8):
+        # platform.platform() in Python < 3.8 doesn't call
+        # platform.mac_ver() if we're on Darwin, so we don't get a nice macOS
+        # version number. Therefore, let's do this manually here.
+        macos_ver = platform.mac_ver()[0]
+        macos_architecture = re.findall('Darwin-.*?-(.*)', platform_str)
+        if macos_architecture:
+            macos_architecture = macos_architecture[0]
+            platform_str = f'macOS-{macos_ver}-{macos_architecture}'
+        del macos_ver, macos_architecture
+
+    out = 'Platform:'.ljust(ljust) + platform_str + '\n'
     out += 'Python:'.ljust(ljust) + str(sys.version).replace('\n', ' ') + '\n'
     out += 'Executable:'.ljust(ljust) + sys.executable + '\n'
     out += 'CPU:'.ljust(ljust) + ('%s: ' % platform.processor())
@@ -504,7 +527,7 @@ def sys_info(fid=None, show_paths=False):
     libs = _get_numpy_libs()
     has_3d = False
     for mod_name in ('mne', 'numpy', 'scipy', 'matplotlib', '', 'sklearn',
-                     'numba', 'nibabel', 'cupy', 'pandas', 'dipy',
+                     'numba', 'nibabel', 'nilearn', 'dipy', 'cupy', 'pandas',
                      'mayavi', 'pyvista', 'vtk', 'PyQt5'):
         if mod_name == '':
             out += '\n'
@@ -522,13 +545,35 @@ def sys_info(fid=None, show_paths=False):
         else:
             extra = (' (%s)' % op.dirname(mod.__file__)) if show_paths else ''
             if mod_name == 'numpy':
-                extra = ' {%s}%s' % (libs, extra)
+                extra += ' {%s}%s' % (libs, extra)
             elif mod_name == 'matplotlib':
-                extra = ' {backend=%s}%s' % (mod.get_backend(), extra)
+                extra += ' {backend=%s}%s' % (mod.get_backend(), extra)
+            elif mod_name == 'pyvista':
+                extras = list()
+                try:
+                    from pyvistaqt import __version__
+                except Exception:
+                    pass
+                else:
+                    extras += [f'pyvistaqt={__version__}']
+                try:
+                    from pyvista import GPUInfo
+                except ImportError:
+                    pass
+                else:
+                    gi = GPUInfo()
+                    extras += [f'OpenGL {gi.version} via {gi.renderer}']
+                if extras:
+                    extra += f' {{{", ".join(extras)}}}'
             elif mod_name in ('mayavi', 'vtk'):
                 has_3d = True
             if mod_name == 'vtk':
-                version = mod.VTK_VERSION
+                version = mod.vtkVersion()
+                # 9.0 dev has VersionFull but 9.0 doesn't
+                for attr in ('GetVTKVersionFull', 'GetVTKVersion'):
+                    if hasattr(version, attr):
+                        version = getattr(version, attr)()
+                        break
             elif mod_name == 'PyQt5':
                 version = _check_pyqt5_version()
             else:

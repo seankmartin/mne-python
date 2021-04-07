@@ -23,11 +23,12 @@ from mayavi.core.scene import Scene
 from mayavi.core.ui.mayavi_scene import MayaviScene
 from tvtk.pyface.tvtk_scene import TVTKScene
 
-from .base_renderer import _BaseRenderer
-from ._utils import _check_color
+from ._abstract import _AbstractRenderer
+from ._utils import _check_color, _alpha_blend_background, ALLOWED_QUIVER_MODES
+from ..utils import _save_ndarray_img
 from ...surface import _normalize_vectors
 from ...utils import (_import_mlab, _validate_type, SilenceStdout,
-                      copy_base_doc_to_subclass_doc)
+                      copy_base_doc_to_subclass_doc, _check_option)
 
 
 class _Projection(object):
@@ -53,7 +54,7 @@ class _Projection(object):
 
 
 @copy_base_doc_to_subclass_doc
-class _Renderer(_BaseRenderer):
+class _Renderer(_AbstractRenderer):
     """Class managing rendering scene.
 
     Attributes
@@ -65,7 +66,7 @@ class _Renderer(_BaseRenderer):
     """
 
     def __init__(self, fig=None, size=(600, 600), bgcolor='black',
-                 name=None, show=False, shape=(1, 1)):
+                 name=None, show=False, shape=(1, 1), smooth_shading=True):
         if bgcolor is not None:
             bgcolor = _check_color(bgcolor)
         self.mlab = _import_mlab()
@@ -79,21 +80,31 @@ class _Renderer(_BaseRenderer):
         self.fig._window_size = size
         _toggle_mlab_render(self.fig, show)
 
+    @property
+    def figure(self):  # cross-compat w/PyVista
+        return self.fig
+
     def subplot(self, x, y):
         pass
 
     def scene(self):
         return self.fig
 
-    def set_interactive(self):
+    def set_interaction(self, interaction):
         from tvtk.api import tvtk
         if self.fig.scene is not None:
             self.fig.scene.interactor.interactor_style = \
-                tvtk.InteractorStyleTerrain()
+                getattr(tvtk, f'InteractorStyle{interaction.capitalize()}')()
 
     def mesh(self, x, y, z, triangles, color, opacity=1.0, shading=False,
              backface_culling=False, scalars=None, colormap=None,
-             vmin=None, vmax=None, interpolate_before_map=True, **kwargs):
+             vmin=None, vmax=None, interpolate_before_map=True,
+             representation='surface', line_width=1., normals=None,
+             polygon_offset=None, **kwargs):
+        # normals and pickable are unused
+        kwargs.pop('pickable', None)
+        del normals
+
         if color is not None:
             color = _check_color(color)
         if color is not None and isinstance(color, np.ndarray) \
@@ -115,21 +126,28 @@ class _Renderer(_BaseRenderer):
                                                 figure=self.fig,
                                                 vmin=vmin,
                                                 vmax=vmax,
+                                                representation=representation,
+                                                line_width=line_width,
                                                 **kwargs)
 
+            l_m = surface.module_manager.scalar_lut_manager
             if vertex_color is not None:
-                surface.module_manager.scalar_lut_manager.lut.table = \
-                    vertex_color
+                l_m.lut.table = vertex_color
             elif isinstance(colormap, np.ndarray):
-                l_m = surface.module_manager.scalar_lut_manager
                 if colormap.dtype == np.uint8:
                     l_m.lut.table = colormap
-                elif colormap.dtype == np.float:
+                elif colormap.dtype == np.float64:
                     l_m.load_lut_from_list(colormap)
                 else:
                     raise TypeError('Expected type for colormap values are'
-                                    ' np.float or np.uint8: '
+                                    ' np.float64 or np.uint8: '
                                     '{} was given'.format(colormap.dtype))
+            elif colormap is not None:
+                from matplotlib.cm import get_cmap
+                l_m.load_lut_from_list(
+                    get_cmap(colormap)(np.linspace(0, 1, 256)))
+            else:
+                assert color is not None
             surface.actor.property.shading = shading
             surface.actor.property.backface_culling = backface_culling
         return surface
@@ -143,11 +161,12 @@ class _Renderer(_BaseRenderer):
                 mesh, contours=contours, line_width=width, vmin=vmin,
                 vmax=vmax, opacity=opacity, figure=self.fig)
             cont.module_manager.scalar_lut_manager.lut.table = colormap
+            return cont
 
     def surface(self, surface, color=None, opacity=1.0,
                 vmin=None, vmax=None, colormap=None,
                 normalized_colormap=False, scalars=None,
-                backface_culling=False):
+                backface_culling=False, polygon_offset=None):
         if color is not None:
             color = _check_color(color)
         if normalized_colormap:
@@ -216,27 +235,37 @@ class _Renderer(_BaseRenderer):
                  glyph_height=None, glyph_center=None, glyph_resolution=None,
                  opacity=1.0, scale_mode='none', scalars=None,
                  backface_culling=False, colormap=None, vmin=None, vmax=None,
-                 line_width=2., name=None):
+                 line_width=2., name=None, solid_transform=None):
+        _check_option('mode', mode, ALLOWED_QUIVER_MODES)
         color = _check_color(color)
         with warnings.catch_warnings(record=True):  # traits
-            if mode in ('arrow', '2darrow', '3darrow'):
+            if mode in ('arrow', '2darrow'):
                 self.mlab.quiver3d(x, y, z, u, v, w, mode=mode,
                                    color=color, scale_factor=scale,
                                    scale_mode=scale_mode,
                                    resolution=resolution, scalars=scalars,
                                    opacity=opacity, figure=self.fig)
-            elif mode == 'cone':
-                self.mlab.quiver3d(x, y, z, u, v, w, color=color,
-                                   mode=mode, scale_factor=scale,
-                                   opacity=opacity, figure=self.fig)
-            elif mode == 'cylinder':
+            elif mode in ('cone', 'sphere', 'oct'):
+                use_mode = 'sphere' if mode == 'oct' else mode
+                quiv = self.mlab.quiver3d(x, y, z, u, v, w, color=color,
+                                          mode=use_mode, scale_factor=scale,
+                                          opacity=opacity, figure=self.fig)
+                if mode == 'sphere':
+                    quiv.glyph.glyph_source.glyph_source.center = 0., 0., 0.
+                elif mode == 'oct':
+                    _oct_glyph(quiv.glyph.glyph_source, solid_transform)
+            else:
+                assert mode == 'cylinder', mode  # should be guaranteed above
                 quiv = self.mlab.quiver3d(x, y, z, u, v, w, mode=mode,
                                           color=color, scale_factor=scale,
                                           opacity=opacity, figure=self.fig)
-                quiv.glyph.glyph_source.glyph_source.height = glyph_height
-                quiv.glyph.glyph_source.glyph_source.center = glyph_center
-                quiv.glyph.glyph_source.glyph_source.resolution = \
-                    glyph_resolution
+                if glyph_height is not None:
+                    quiv.glyph.glyph_source.glyph_source.height = glyph_height
+                if glyph_center is not None:
+                    quiv.glyph.glyph_source.glyph_source.center = glyph_center
+                if glyph_resolution is not None:
+                    quiv.glyph.glyph_source.glyph_source.resolution = \
+                        glyph_resolution
                 quiv.actor.property.backface_culling = backface_culling
 
     def text2d(self, x_window, y_window, text, size=14, color='white',
@@ -258,9 +287,12 @@ class _Renderer(_BaseRenderer):
             self.mlab.text3d(x, y, z, text, scale=scale, color=color,
                              figure=self.fig)
 
-    def scalarbar(self, source, title=None, n_labels=4, bgcolor=None):
+    def scalarbar(self, source, color="white", title=None, n_labels=4,
+                  bgcolor=None):
         with warnings.catch_warnings(record=True):  # traits
-            self.mlab.scalarbar(source, title=title, nb_labels=n_labels)
+            bar = self.mlab.scalarbar(source, title=title, nb_labels=n_labels)
+        if color is not None:
+            bar.label_text_property.color = _check_color(color)
         if bgcolor is not None:
             from tvtk.api import tvtk
             bgcolor = np.asarray(bgcolor)
@@ -270,12 +302,10 @@ class _Renderer(_BaseRenderer):
             ctable = lut.table.to_array()
             cbar_lut = tvtk.LookupTable()
             cbar_lut.deep_copy(lut)
-            alphas = ctable[:, -1][:, np.newaxis] / 255.
-            use_lut = ctable.copy()
-            use_lut[:, -1] = 255.
-            vals = (use_lut * alphas) + bgcolor * (1 - alphas)
+            vals = _alpha_blend_background(ctable, bgcolor)
             cbar_lut.table.from_array(vals)
             cmap.scalar_bar.lookup_table = cbar_lut
+        return bar
 
     def show(self):
         if self.fig is not None:
@@ -285,10 +315,11 @@ class _Renderer(_BaseRenderer):
         _close_3d_figure(figure=self.fig)
 
     def set_camera(self, azimuth=None, elevation=None, distance=None,
-                   focalpoint=None):
+                   focalpoint=None, roll=None, reset_camera=None,
+                   rigid=None):
         _set_3d_view(figure=self.fig, azimuth=azimuth,
                      elevation=elevation, distance=distance,
-                     focalpoint=focalpoint)
+                     focalpoint=focalpoint, roll=roll)
 
     def reset_camera(self):
         renderer = getattr(self.fig.scene, 'renderer', None)
@@ -310,12 +341,18 @@ class _Renderer(_BaseRenderer):
         if self.fig.scene is not None:
             self.fig.scene.renderer.use_depth_peeling = True
 
+    def remove_mesh(self, surface):
+        if self.fig.scene is not None:
+            self.fig.scene.renderer.remove_actor(surface.actor)
+
 
 def _mlab_figure(**kwargs):
     """Create a Mayavi figure using our defaults."""
+    from .._3d import _get_3d_option
     fig = _import_mlab().figure(**kwargs)
     # If using modern VTK/Mayavi, improve rendering with FXAA
-    if hasattr(getattr(fig.scene, 'renderer', None), 'use_fxaa'):
+    antialias = _get_3d_option('antialias')
+    if antialias and hasattr(getattr(fig.scene, 'renderer', None), 'use_fxaa'):
         fig.scene.renderer.use_fxaa = True
     return fig
 
@@ -392,11 +429,11 @@ def _get_world_to_view_matrix(scene):
 
 
 def _get_view_to_display_matrix(scene):
-    """Return the 4x4 matrix to convert view coordinates to display coordinates.
+    """Return the 4x4 matrix to convert view coordinates to display coords.
 
     It's assumed that the view should take up the entire window and that the
     origin of the window is in the upper left corner.
-    """  # noqa: E501
+    """
     _validate_type(scene, (MayaviScene, TVTKScene), "scene",
                    "TVTKScene/MayaviScene")
 
@@ -404,10 +441,10 @@ def _get_view_to_display_matrix(scene):
     # so we need to scale by width and height of the display window and shift
     # by half width and half height. The matrix accomplishes that.
     x, y = tuple(scene.get_size())
-    view_to_disp_mat = np.array([[x / 2.0,       0.,   0.,   x / 2.0],  # noqa: E241,E501
-                                 [0.,      -y / 2.0,   0.,   y / 2.0],  # noqa: E241,E501
-                                 [0.,            0.,   1.,        0.],  # noqa: E241,E501
-                                 [0.,            0.,   0.,        1.]])  # noqa: E241,E501
+    view_to_disp_mat = np.array([[x / 2.0,       0.,   0.,   x / 2.0],
+                                 [0.,      -y / 2.0,   0.,   y / 2.0],
+                                 [0.,            0.,   1.,        0.],
+                                 [0.,            0.,   0.,        1.]])
     return view_to_disp_mat
 
 
@@ -416,12 +453,13 @@ def _close_all():
     mlab.close(all=True)
 
 
-def _set_3d_view(figure, azimuth, elevation, focalpoint, distance):
+def _set_3d_view(figure, azimuth, elevation, focalpoint, distance, roll=None,
+                 reset_camera=True):
     from mayavi import mlab
     with warnings.catch_warnings(record=True):  # traits
         with SilenceStdout():
             mlab.view(azimuth, elevation, distance,
-                      focalpoint=focalpoint, figure=figure)
+                      focalpoint=focalpoint, figure=figure, roll=roll)
             mlab.draw(figure)
 
 
@@ -446,12 +484,7 @@ def _check_3d_figure(figure):
 
 
 def _save_figure(img, filename):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-    fig = Figure(frameon=False)
-    FigureCanvasAgg(fig)
-    fig.figimage(img, resize=True)
-    fig.savefig(filename)
+    _save_ndarray_img(filename, img)
 
 
 def _close_3d_figure(figure):
@@ -468,16 +501,16 @@ def _take_3d_screenshot(figure, mode='rgb', filename=None):
             figure_size = figure._window_size
         else:
             figure_size = figure.scene._renwin.size
-        return np.zeros(tuple(figure_size) + (ndim,), np.uint8)
+        img = np.zeros(tuple(figure_size) + (ndim,), np.uint8)
     else:
         from pyface.api import GUI
         gui = GUI()
         gui.process_events()
         with warnings.catch_warnings(record=True):  # traits
             img = mlab.screenshot(figure, mode=mode)
-        if isinstance(filename, str):
-            _save_figure(img, filename)
-        return img
+    if isinstance(filename, str):
+        _save_figure(img, filename)
+    return img
 
 
 @contextmanager
@@ -489,3 +522,32 @@ def _testing_context(interactive):
         yield
     finally:
         mlab.options.backend = orig_backend
+
+
+def _oct_glyph(glyph_source, transform):
+    from tvtk.api import tvtk
+    from tvtk.common import configure_input
+    from traits.api import Array
+    gs = tvtk.PlatonicSolidSource()
+
+    # Workaround for:
+    #  File "mayavi/components/glyph_source.py", line 231, in _glyph_position_changed  # noqa: E501
+    #    g.center = 0.0, 0.0, 0.0
+    # traits.trait_errors.TraitError: Cannot set the undefined 'center' attribute of a 'TransformPolyDataFilter' object.  # noqa: E501
+    class SafeTransformPolyDataFilter(tvtk.TransformPolyDataFilter):
+        center = Array(shape=(3,), value=np.zeros(3))
+
+    gs.solid_type = 'octahedron'
+    if transform is not None:
+        # glyph:             mayavi.modules.vectors.Vectors
+        # glyph.glyph:       vtkGlyph3D
+        # glyph.glyph.glyph: mayavi.components.glyph.Glyph
+        assert transform.shape == (4, 4)
+        tr = tvtk.Transform()
+        tr.set_matrix(transform.ravel())
+        trp = SafeTransformPolyDataFilter()
+        configure_input(trp, gs)
+        trp.transform = tr
+        trp.update()
+        gs = trp
+    glyph_source.glyph_source = gs

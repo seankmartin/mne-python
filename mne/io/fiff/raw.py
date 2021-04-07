@@ -24,7 +24,8 @@ from ..utils import _mult_cal_one
 from ...annotations import Annotations, _read_annotations_fif
 
 from ...event import AcqParserFIF
-from ...utils import check_fname, logger, verbose, warn, fill_doc, _file_like
+from ...utils import (check_fname, logger, verbose, warn, fill_doc, _file_like,
+                      _on_missing, _check_fname)
 
 
 @fill_doc
@@ -35,10 +36,11 @@ class Raw(BaseRaw):
     ----------
     fname : str | file-like
         The raw filename to load. For files that have automatically been split,
-        the split part will be automatically loaded. Filenames should end
-        with raw.fif, raw.fif.gz, raw_sss.fif, raw_sss.fif.gz, raw_tsss.fif,
-        raw_tsss.fif.gz, or _meg.fif. If a file-like object is provided,
-        preloading must be used.
+        the split part will be automatically loaded. Filenames not ending with
+        ``raw.fif``, ``raw_sss.fif``, ``raw_tsss.fif``, ``_meg.fif``,
+        ``_eeg.fif``,  or ``_ieeg.fif`` (with or without an optional additional
+        ``.gz`` extension) will generate a warning. If a file-like object is
+        provided, preloading must be used.
 
         .. versionchanged:: 0.18
            Support for file-like objects.
@@ -49,6 +51,7 @@ class Raw(BaseRaw):
         SSS/tSSS to remove the compensation signals that may also affect brain
         activity. Can also be "yes" to load without eliciting a warning.
     %(preload)s
+    %(on_split_missing)s
     %(verbose)s
 
     Attributes
@@ -70,20 +73,26 @@ class Raw(BaseRaw):
 
     @verbose
     def __init__(self, fname, allow_maxshield=False, preload=False,
-                 verbose=None):  # noqa: D102
+                 on_split_missing='raise', verbose=None):  # noqa: D102
         raws = []
-        do_check_fname = not _file_like(fname)
+        do_check_ext = not _file_like(fname)
         next_fname = fname
         while next_fname is not None:
             raw, next_fname, buffer_size_sec = \
                 self._read_raw_file(next_fname, allow_maxshield,
-                                    preload, do_check_fname)
-            do_check_fname = False
+                                    preload, do_check_ext)
+            do_check_ext = False
             raws.append(raw)
             if next_fname is not None:
                 if not op.exists(next_fname):
-                    warn('Split raw file detected but next file %s does not '
-                         'exist.' % next_fname)
+                    msg = (
+                        f'Split raw file detected but next file {next_fname} '
+                        'does not exist. Ensure all files were transferred '
+                        'properly and that split and original files were not '
+                        'manually renamed on disk (split files should be '
+                        'renamed by loading and re-saving with MNE-Python to '
+                        'preserve proper filename linkage).')
+                    _on_missing(on_split_missing, msg, name='on_split_missing')
                     break
         if _file_like(fname):
             # avoid serialization error when copying file-like
@@ -123,18 +132,19 @@ class Raw(BaseRaw):
 
     @verbose
     def _read_raw_file(self, fname, allow_maxshield, preload,
-                       do_check_fname=True, verbose=None):
+                       do_check_ext=True, verbose=None):
         """Read in header information from a raw file."""
         logger.info('Opening raw data file %s...' % fname)
 
         #   Read in the whole file if preload is on and .fif.gz (saves time)
         if not _file_like(fname):
-            if do_check_fname:
-                check_fname(fname, 'raw', (
-                    'raw.fif', 'raw_sss.fif', 'raw_tsss.fif', 'raw.fif.gz',
-                    'raw_sss.fif.gz', 'raw_tsss.fif.gz', '_meg.fif'))
+            if do_check_ext:
+                endings = ('raw.fif', 'raw_sss.fif', 'raw_tsss.fif',
+                           '_meg.fif', '_eeg.fif', '_ieeg.fif')
+                endings += tuple([f'{e}.gz' for e in endings])
+                check_fname(fname, 'raw', endings)
             # filename
-            fname = op.realpath(fname)
+            fname = _check_fname(fname, 'read', True, 'fname')
             ext = os.path.splitext(fname)[1].lower()
             whole_file = preload if '.gz' in ext else False
             del ext
@@ -334,6 +344,7 @@ class Raw(BaseRaw):
 
     def _read_segment_file(self, data, idx, fi, start, stop, cals, mult):
         """Read a segment of data from a file."""
+        n_bad = 0
         with _fiff_get_fid(self._filenames[fi]) as fid:
             bounds = self._raw_extras[fi]['bounds']
             ents = self._raw_extras[fi]['ent']
@@ -353,10 +364,17 @@ class Raw(BaseRaw):
                     one = read_tag(fid, ent.pos,
                                    shape=(nsamp, nchan),
                                    rlims=(first_pick, last_pick)).data
-                    one.shape = (picksamp, nchan)
-                    _mult_cal_one(data[:, offset:(offset + picksamp)],
-                                  one.T, idx, cals, mult)
+                    try:
+                        one.shape = (picksamp, nchan)
+                    except AttributeError:  # one is None
+                        n_bad += picksamp
+                    else:
+                        _mult_cal_one(data[:, offset:(offset + picksamp)],
+                                      one.T, idx, cals, mult)
                 offset += picksamp
+            if n_bad:
+                warn(f'FIF raw buffer could not be read, acquisition error '
+                     f'likely: {n_bad} samples set to zero')
             assert offset == stop - start
 
     def fix_mag_coil_types(self):
@@ -418,7 +436,8 @@ def _check_entry(first, nent):
 
 
 @fill_doc
-def read_raw_fif(fname, allow_maxshield=False, preload=False, verbose=None):
+def read_raw_fif(fname, allow_maxshield=False, preload=False,
+                 on_split_missing='raise', verbose=None):
     """Reader function for Raw FIF data.
 
     Parameters
@@ -439,6 +458,7 @@ def read_raw_fif(fname, allow_maxshield=False, preload=False, verbose=None):
         SSS/tSSS to remove the compensation signals that may also affect brain
         activity. Can also be "yes" to load without eliciting a warning.
     %(preload)s
+    %(on_split_missing)s
     %(verbose)s
 
     Returns
@@ -451,4 +471,5 @@ def read_raw_fif(fname, allow_maxshield=False, preload=False, verbose=None):
     .. versionadded:: 0.9.0
     """
     return Raw(fname=fname, allow_maxshield=allow_maxshield,
-               preload=preload, verbose=verbose)
+               preload=preload, verbose=verbose,
+               on_split_missing=on_split_missing)

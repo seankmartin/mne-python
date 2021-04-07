@@ -4,16 +4,19 @@
 #
 # License: BSD (3-clause)
 
+from builtins import input  # no-op here but facilitates testing
 from difflib import get_close_matches
 from distutils.version import LooseVersion
 import operator
 import os
 import os.path as op
-import sys
 from pathlib import Path
+import sys
+import warnings
 
 import numpy as np
 
+from ..fixes import _median_complex
 from ._logging import warn, logger
 
 
@@ -89,6 +92,13 @@ def check_version(library, min_version='0.0'):
     return ok
 
 
+def _require_version(lib, what, version='0.0'):
+    """Require library for a purpose."""
+    if not check_version(lib, version):
+        extra = f' (version >= {version})' if version != '0.0' else ''
+        raise ImportError(f'The {lib} package{extra} is required to {what}')
+
+
 def _check_mayavi_version(min_version='4.3.0'):
     """Check mayavi version."""
     if not check_version('mayavi', min_version):
@@ -141,21 +151,32 @@ def _check_event_id(event_id, events):
 
 
 def _check_fname(fname, overwrite=False, must_exist=False, name='File',
-                 allow_dir=False):
+                 need_dir=False):
     """Check for file existence."""
-    _validate_type(fname, 'path-like', 'fname')
-    if op.isfile(fname) or (allow_dir and op.isdir(fname)):
+    _validate_type(fname, 'path-like', name)
+    if op.exists(fname):
         if not overwrite:
             raise FileExistsError('Destination file exists. Please use option '
                                   '"overwrite=True" to force overwriting.')
         elif overwrite != 'read':
             logger.info('Overwriting existing file.')
-        if must_exist and not os.access(fname, os.R_OK):
-            raise PermissionError(
-                '%s does not have read permissions: %s' % (name, fname))
+        if must_exist:
+            if need_dir:
+                if not op.isdir(fname):
+                    raise IOError(
+                        f'Need a directory for {name} but found a file '
+                        f'at {fname}')
+            else:
+                if not op.isfile(fname):
+                    raise IOError(
+                        f'Need a file for {name} but found a directory '
+                        f'at {fname}')
+            if not os.access(fname, os.R_OK):
+                raise PermissionError(
+                    f'{name} does not have read permissions: {fname}')
     elif must_exist:
-        raise FileNotFoundError('%s "%s" does not exist' % (name, fname))
-    return str(fname)
+        raise FileNotFoundError(f'{name} does not exist: {fname}')
+    return str(op.abspath(fname))
 
 
 def _check_subject(class_subject, input_subject, raise_error=True,
@@ -315,6 +336,7 @@ class _IntLike(object):
 
 
 int_like = _IntLike()
+path_like = (str, Path)
 
 
 class _Callable(object):
@@ -326,7 +348,7 @@ class _Callable(object):
 _multi = {
     'str': (str,),
     'numeric': (np.floating, float, int_like),
-    'path-like': (str, Path),
+    'path-like': path_like,
     'int-like': (int_like,),
     'callable': (_Callable(),),
 }
@@ -351,7 +373,13 @@ def _validate_type(item, types=None, item_name=None, type_name=None):
         The thing to be checked.
     types : type | str | tuple of types | tuple of str
          The types to be checked against.
-         If str, must be one of {'int', 'str', 'numeric', 'info', 'path-like'}.
+         If str, must be one of {'int', 'str', 'numeric', 'info', 'path-like',
+         'callable'}.
+    item_name : str | None
+        Name of the item to show inside the error message.
+    type_name : str | None
+        Possible types to show inside the error message that the checked item
+        can be.
     """
     if types == "int":
         _ensure_int(item, name=item_name)
@@ -377,8 +405,9 @@ def _validate_type(item, types=None, item_name=None, type_name=None):
             else:
                 type_name[-1] = 'or ' + type_name[-1]
                 type_name = ', '.join(type_name)
-        raise TypeError('%s must be an instance of %s, got %s instead'
-                        % (item_name, type_name, type(item),))
+        _item_name = 'Item' if item_name is None else item_name
+        raise TypeError(f"{_item_name} must be an instance of {type_name}, "
+                        f"got {type(item)} instead")
 
 
 def _check_path_like(item):
@@ -486,35 +515,35 @@ def _check_rank(rank):
 def _check_one_ch_type(method, info, forward, data_cov=None, noise_cov=None):
     """Check number of sensor types and presence of noise covariance matrix."""
     from ..cov import make_ad_hoc_cov, Covariance
+    from ..time_frequency.csd import CrossSpectralDensity
     from ..io.pick import pick_info
     from ..channels.channels import _contains_ch_type
-    picks = _check_info_inv(info, forward, data_cov=data_cov,
-                            noise_cov=noise_cov)
-    info_pick = pick_info(info, picks)
+    if isinstance(data_cov, CrossSpectralDensity):
+        _validate_type(noise_cov, [None, CrossSpectralDensity], 'noise_cov')
+        # FIXME
+        picks = list(range(len(data_cov.ch_names)))
+        info_pick = info
+    else:
+        _validate_type(noise_cov, [None, Covariance], 'noise_cov')
+        picks = _check_info_inv(info, forward, data_cov=data_cov,
+                                noise_cov=noise_cov)
+        info_pick = pick_info(info, picks)
     ch_types =\
         [_contains_ch_type(info_pick, tt) for tt in ('mag', 'grad', 'eeg')]
     if sum(ch_types) > 1:
-        if method == 'lcmv' and noise_cov is None:
+        if noise_cov is None:
             raise ValueError('Source reconstruction with several sensor types'
                              ' requires a noise covariance matrix to be '
                              'able to apply whitening.')
-        if method == 'dics':
-            raise RuntimeError(
-                'The use of several sensor types with the DICS beamformer is '
-                'not supported yet.')
-    # Later in the code we use the data covariance rank for our computations,
-    # so we can allow_mismatch between the data and noise cov if we construct
-    # a known diagonal covariance (the correct/chosen subspace based on rank
-    # will still be used).
     if noise_cov is None:
         noise_cov = make_ad_hoc_cov(info_pick, std=1.)
         allow_mismatch = True
     else:
         noise_cov = noise_cov.copy()
-        if 'estimator' in noise_cov:
+        if isinstance(noise_cov, Covariance) and 'estimator' in noise_cov:
             del noise_cov['estimator']
         allow_mismatch = False
-    _validate_type(noise_cov, Covariance, 'noise_cov')
+    _validate_type(noise_cov, (Covariance, CrossSpectralDensity), 'noise_cov')
     return noise_cov, picks, allow_mismatch
 
 
@@ -529,7 +558,8 @@ def _check_depth(depth, kind='depth_mne'):
 def _check_option(parameter, value, allowed_values, extra=''):
     """Check the value of a parameter against a list of valid options.
 
-    Raises a ValueError with a readable error message if the value was invalid.
+    Return the value if it is valid, otherwise raise a ValueError with a
+    readable error message.
 
     Parameters
     ----------
@@ -546,10 +576,15 @@ def _check_option(parameter, value, allowed_values, extra=''):
     Raises
     ------
     ValueError
-        When the value of the parameter was not one of the valid options.
+        When the value of the parameter is not one of the valid options.
+
+    Returns
+    -------
+    value : any type
+        The value if it is valid.
     """
     if value in allowed_values:
-        return True
+        return value
 
     # Prepare a nice error message for the user
     extra = ' ' + extra if extra else extra
@@ -557,11 +592,11 @@ def _check_option(parameter, value, allowed_values, extra=''):
            '{options}, but got {value!r} instead.')
     allowed_values = list(allowed_values)  # e.g., if a dict was given
     if len(allowed_values) == 1:
-        options = 'The only allowed value is %r' % allowed_values[0]
+        options = f'The only allowed value is {repr(allowed_values[0])}'
     else:
         options = 'Allowed values are '
-        options += ', '.join(['%r' % v for v in allowed_values[:-1]])
-        options += ' and %r' % allowed_values[-1]
+        options += ', '.join([f'{repr(v)}' for v in allowed_values[:-1]])
+        options += f', and {repr(allowed_values[-1])}'
     raise ValueError(msg.format(parameter=parameter, options=options,
                                 value=value, extra=extra))
 
@@ -582,9 +617,9 @@ def _check_combine(mode, valid=('mean', 'median', 'std')):
     elif mode == "std":
         def fun(data):
             return np.std(data, axis=0)
-    elif mode == "median":
+    elif mode == "median" or mode == np.median:
         def fun(data):
-            return np.median(data, axis=0)
+            return _median_complex(data, axis=0)
     elif callable(mode):
         fun = mode
     else:
@@ -665,9 +700,6 @@ def _check_sphere(sphere, info=None, sphere_units='m'):
     if sphere.shape != (4,):
         raise ValueError('sphere must be float or 1D array of shape (4,), got '
                          'array-like of shape %s' % (sphere.shape,))
-    # 0.21 deprecation can just remove this conversion
-    if sphere_units is None:
-        sphere_units = 'mm'
     _check_option('sphere_units', sphere_units, ('m', 'mm'))
     if sphere_units == 'mm':
         sphere /= 1000.
@@ -693,3 +725,46 @@ def _suggest(val, options, cutoff=0.66):
         return ' Did you mean %r?' % (options[0],)
     else:
         return ' Did you mean one of %r?' % (options,)
+
+
+def _check_on_missing(on_missing, name='on_missing'):
+    _validate_type(on_missing, str, name)
+    _check_option(name, on_missing, ['raise', 'warn', 'ignore'])
+
+
+def _on_missing(on_missing, msg, name='on_missing', error_klass=None):
+    _check_on_missing(on_missing, name)
+    error_klass = ValueError if error_klass is None else error_klass
+    on_missing = 'raise' if on_missing == 'error' else on_missing
+    on_missing = 'warn' if on_missing == 'warning' else on_missing
+    if on_missing == 'raise':
+        raise error_klass(msg)
+    elif on_missing == 'warn':
+        warn(msg)
+    else:  # Ignore
+        assert on_missing == 'ignore'
+
+
+def _safe_input(msg, *, alt=None, use=None):
+    try:
+        return input(msg)
+    except EOFError:  # MATLAB or other non-stdin
+        if use is not None:
+            return use
+        raise RuntimeError(
+            f'Could not use input() to get a response to:\n{msg}\n'
+            f'You can {alt} to avoid this error.')
+
+
+def _ensure_events(events):
+    events_type = type(events)
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter('ignore')  # deprecation for object array
+        events = np.asarray(events)
+    if not np.issubdtype(events.dtype, np.integer):
+        raise TypeError('events should be a NumPy array of integers, '
+                        f'got {events_type}')
+    if events.ndim != 2 or events.shape[1] != 3:
+        raise ValueError(
+            f'events must be of shape (N, 3), got {events.shape}')
+    return events

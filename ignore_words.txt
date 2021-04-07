@@ -32,3 +32,6 @@ dof
 nwe
 thead
 sherif
+master
+nin
+trough

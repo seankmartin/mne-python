@@ -12,7 +12,6 @@ import glob
 
 import numpy as np
 from copy import deepcopy
-from scipy import linalg
 
 from .fixes import einsum, jit, mean
 from .io.constants import FIFF
@@ -103,7 +102,7 @@ class Transform(dict):
         self['trans'] = trans
 
     def __repr__(self):  # noqa: D105
-        return ('<Transform  |  %s->%s>\n%s'
+        return ('<Transform | %s->%s>\n%s'
                 % (_coord_frame_name(self['from']),
                    _coord_frame_name(self['to']), self['trans']))
 
@@ -330,9 +329,9 @@ def rotation3d_align_z_axis(target_z_axis):
 
     # assert that r is a rotation matrix r^t * r = I and det(r) = 1
     assert(np.any((r.dot(r.T) - np.identity(3)) < 1E-12))
-    assert((linalg.det(r) - 1.0) < 1E-12)
+    assert((np.linalg.det(r) - 1.0) < 1E-12)
     # assert that r maps [0 0 1] on the device z axis (target_z_axis)
-    assert(linalg.norm(target_z_axis - r.dot([0, 0, 1])) < 1e-12)
+    assert(np.linalg.norm(target_z_axis - r.dot([0, 0, 1])) < 1e-12)
 
     return r
 
@@ -514,7 +513,8 @@ def combine_transforms(t_first, t_second, fro, to):
     return Transform(fro, to, np.dot(t_second['trans'], t_first['trans']))
 
 
-def read_trans(fname, return_all=False):
+@verbose
+def read_trans(fname, return_all=False, verbose=None):
     """Read a -trans.fif file.
 
     Parameters
@@ -526,6 +526,7 @@ def read_trans(fname, return_all=False):
         False (default) will only return the first.
 
         .. versionadded:: 0.15
+    %(verbose)s
 
     Returns
     -------
@@ -585,7 +586,7 @@ def invert_transform(trans):
     inv_trans : dict
         Inverse transform.
     """
-    return Transform(trans['to'], trans['from'], linalg.inv(trans['trans']))
+    return Transform(trans['to'], trans['from'], np.linalg.inv(trans['trans']))
 
 
 def transform_surface_to(surf, dest, trans, copy=False):
@@ -658,12 +659,12 @@ def get_ras_to_neuromag_trans(nasion, lpa, rpa):
                              "arrays of length 3.")
 
     right = rpa - lpa
-    right_unit = right / linalg.norm(right)
+    right_unit = right / np.linalg.norm(right)
 
     origin = lpa + np.dot(nasion - lpa, right_unit) * right_unit
 
     anterior = nasion - origin
-    anterior_unit = anterior / linalg.norm(anterior)
+    anterior_unit = anterior / np.linalg.norm(anterior)
 
     superior_unit = np.cross(right_unit, anterior_unit)
 
@@ -732,7 +733,7 @@ def _sph_to_cart(sph_pts):
 def _get_n_moments(order):
     """Compute the number of multipolar moments (spherical harmonics).
 
-    Equivalent to [1]_ Eq. 32.
+    Equivalent to :footcite:`DarvasEtAl2006` Eq. 32.
 
     .. note:: This count excludes ``degree=0`` (for ``order=0``).
 
@@ -900,16 +901,16 @@ class _TPSWarp(object):
 
     Notes
     -----
-    Adapted from code by `Wang Lin <wanglin193@hotmail.com>`_.
+    Based on the method by :footcite:`Bookstein1989` and
+    adapted from code by Wang Lin (wanglin193@hotmail.com>).
 
     References
     ----------
-    .. [1] Bookstein, F. L. "Principal Warps: Thin Plate Splines and the
-           Decomposition of Deformations." IEEE Trans. Pattern Anal. Mach.
-           Intell. 11, 567-585, 1989.
+    .. footbibliography::
     """
 
     def fit(self, source, destination, reg=1e-3):
+        from scipy import linalg
         from scipy.spatial.distance import cdist
         assert source.shape[1] == destination.shape[1] == 3
         assert source.shape[0] == destination.shape[0]
@@ -978,7 +979,9 @@ class _SphericalSurfaceWarp(object):
     Notes
     -----
     This class can be used to warp data from a source subject to
-    a destination subject, as described in [1]_. The procedure is:
+    a destination subject, as described in :footcite:`DarvasEtAl2006`.
+
+    The procedure is:
 
         1. Perform a spherical harmonic approximation to the source and
            destination surfaces, which smooths them and allows arbitrary
@@ -993,9 +996,7 @@ class _SphericalSurfaceWarp(object):
 
     References
     ----------
-    .. [1] Darvas F, Ermer JJ, Mosher JC, Leahy RM (2006). "Generic head
-           models for atlas-based EEG source analysis."
-           Human Brain Mapping 27:129-143
+    .. footbibliography::
     """
 
     def __repr__(self):
@@ -1038,6 +1039,7 @@ class _SphericalSurfaceWarp(object):
         inst : instance of SphericalSurfaceWarp
             The warping object (for chaining).
         """
+        from scipy import linalg
         from .bem import _fit_sphere
         from .source_space import _check_spacing
         match_rr = _check_spacing(match, verbose=False)[2]['rr']
@@ -1381,6 +1383,7 @@ def _fit_matched_points(p, x, weights=None, scale=False):
 
 def _average_quats(quats, weights=None):
     """Average unit quaternions properly."""
+    from scipy import linalg
     assert quats.ndim == 2 and quats.shape[1] in (3, 4)
     if weights is None:
         weights = np.ones(quats.shape[0])
@@ -1431,7 +1434,7 @@ def read_ras_mni_t(subject, subjects_dir=None):
     Returns
     -------
     ras_mni_t : instance of Transform
-        The transform from RAS to MNI.
+        The transform from RAS to MNI (in mm).
     """
     subjects_dir = get_subjects_dir(subjects_dir=subjects_dir,
                                     raise_error=True)

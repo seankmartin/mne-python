@@ -29,7 +29,7 @@ where the :math:`C = (c_{1}, ..., c_{N})^{T}` are constants which must be estima
 .. math:: g_{m}(x) = \frac{1}{4 \pi}\sum_{n=1}^{\infty} \frac{2n + 1}{(n(n + 1))^m}P_{n}(x)
    :label: legendre
 
-where :math:`P_{n}(x)` are `Legendre polynomials`_ of order `n`.
+where :math:`P_{n}(x)` are `Legendre polynomials`_ of order :math:`n`.
 
 .. _Legendre polynomials: https://en.wikipedia.org/wiki/Legendre_polynomials
 
@@ -69,9 +69,3 @@ and the bad channel will be fixed.
 .. topic:: Examples:
 
 	* :ref:`sphx_glr_auto_examples_preprocessing_plot_interpolate_bad_channels.py`
-
-
-References
-~~~~~~~~~~
-
-.. footbibliography::

@@ -63,16 +63,14 @@ fig = mne.viz.create_3d_figure(size=(600, 400), bgcolor=white)
 coord_frame = 'mri'
 
 # Plot the cortex
-fig = mne.viz.plot_alignment(subject=subject, subjects_dir=subjects_dir,
-                             trans=trans, surfaces='white',
-                             coord_frame=coord_frame, fig=fig)
+mne.viz.plot_alignment(
+    subject=subject, subjects_dir=subjects_dir, trans=trans, surfaces='white',
+    coord_frame=coord_frame, fig=fig)
 
 # Mark the position of the dipoles with small red dots
-fig = mne.viz.plot_dipole_locations(dipoles=dipoles, trans=trans,
-                                    mode='sphere', subject=subject,
-                                    subjects_dir=subjects_dir,
-                                    coord_frame=coord_frame,
-                                    scale=7e-4, fig=fig)
+mne.viz.plot_dipole_locations(
+    dipoles=dipoles, trans=trans, mode='sphere', subject=subject,
+    subjects_dir=subjects_dir, coord_frame=coord_frame, scale=7e-4, fig=fig)
 
 mne.viz.set_3d_view(figure=fig, azimuth=180, distance=0.25)
 
@@ -84,9 +82,9 @@ mne.viz.set_3d_view(figure=fig, azimuth=180, distance=0.25)
 # While the source space defines the position of the dipoles, the inverse
 # operator defines the possible orientations of them. One of the options is to
 # assign a fixed orientation. Since the neural currents from which MEG and EEG
-# signals originate flows mostly perpendicular to the cortex [1]_, restricting
-# the orientation of the dipoles accordingly places a useful restriction on the
-# source estimate.
+# signals originate flows mostly perpendicular to the cortex
+# :footcite:`HamalainenEtAl1993`, restricting the orientation of the dipoles
+# accordingly places a useful restriction on the source estimate.
 #
 # By specifying ``fixed=True`` when calling
 # :func:`mne.minimum_norm.make_inverse_operator`, the dipole orientations are
@@ -96,16 +94,14 @@ mne.viz.set_3d_view(figure=fig, azimuth=180, distance=0.25)
 fig = mne.viz.create_3d_figure(size=(600, 400))
 
 # Plot the cortex
-fig = mne.viz.plot_alignment(subject=subject, subjects_dir=subjects_dir,
-                             trans=trans,
-                             surfaces='white', coord_frame='head', fig=fig)
+mne.viz.plot_alignment(
+    subject=subject, subjects_dir=subjects_dir, trans=trans,
+    surfaces='white', coord_frame='head', fig=fig)
 
 # Show the dipoles as arrows pointing along the surface normal
-fig = mne.viz.plot_dipole_locations(dipoles=dipoles, trans=trans,
-                                    mode='arrow', subject=subject,
-                                    subjects_dir=subjects_dir,
-                                    coord_frame='head',
-                                    scale=7e-4, fig=fig)
+mne.viz.plot_dipole_locations(
+    dipoles=dipoles, trans=trans, mode='arrow', subject=subject,
+    subjects_dir=subjects_dir, coord_frame='head', scale=7e-4, fig=fig)
 
 mne.viz.set_3d_view(figure=fig, azimuth=180, distance=0.1)
 
@@ -122,6 +118,7 @@ stc = apply_inverse(left_auditory, inv, pick_ori=None)
 _, time_max = stc.get_peak(hemi='lh')
 brain_fixed = stc.plot(surface='white', subjects_dir=subjects_dir,
                        initial_time=time_max, time_unit='s', size=(600, 400))
+mne.viz.set_3d_view(figure=brain_fixed, focalpoint=(0., 0., 50))
 
 ###############################################################################
 # The direction of the estimated current is now restricted to two directions:
@@ -139,22 +136,23 @@ brain_fixed = stc.plot(surface='white', subjects_dir=subjects_dir,
 # source estimate sensitive to the spacing of the dipoles along the cortex,
 # since the curvature of the cortex changes within each ~10 square mm patch.
 # Furthermore, misalignment of the MEG/EEG and MRI coordinate frames is more
-# critical when the source dipole orientations are strictly constrained [2]_.
-# To lift the restriction on the orientation of the dipoles, the inverse
-# operator has the ability to place not one, but three dipoles at each
-# location defined by the source space. These three dipoles are placed
-# orthogonally to form a Cartesian coordinate system. Let's visualize this:
+# critical when the source dipole orientations are strictly constrained
+# :footcite:`LinEtAl2006`. To lift the restriction on the orientation of the
+# dipoles, the inverse operator has the ability to place not one, but three
+# dipoles at each location defined by the source space. These three dipoles are
+# placed orthogonally to form a Cartesian coordinate system. Let's visualize
+# this:
 fig = mne.viz.create_3d_figure(size=(600, 400))
 
 # Plot the cortex
-fig = mne.viz.plot_alignment(subject=subject, subjects_dir=subjects_dir,
-                             trans=trans,
-                             surfaces='white', coord_frame='head', fig=fig)
+mne.viz.plot_alignment(
+    subject=subject, subjects_dir=subjects_dir, trans=trans,
+    surfaces='white', coord_frame='head', fig=fig)
 
 # Show the three dipoles defined at each location in the source space
-fig = mne.viz.plot_alignment(subject=subject, subjects_dir=subjects_dir,
-                             trans=trans, fwd=fwd,
-                             surfaces='white', coord_frame='head', fig=fig)
+mne.viz.plot_alignment(
+    subject=subject, subjects_dir=subjects_dir, trans=trans, fwd=fwd,
+    surfaces='white', coord_frame='head', fig=fig)
 
 mne.viz.set_3d_view(figure=fig, azimuth=180, distance=0.1)
 
@@ -174,6 +172,7 @@ stc = apply_inverse(left_auditory, inv, pick_ori='vector')
 _, time_max = stc.magnitude().get_peak(hemi='lh')
 brain_mag = stc.plot(subjects_dir=subjects_dir, initial_time=time_max,
                      time_unit='s', size=(600, 400), overlay_alpha=0)
+mne.viz.set_3d_view(figure=brain_mag, focalpoint=(0., 0., 50))
 
 ###############################################################################
 # .. _plot_dipole_orientations_vLOC_orientations:
@@ -196,6 +195,7 @@ stc = apply_inverse(left_auditory, inv, pick_ori='vector')
 _, time_max = stc.magnitude().get_peak(hemi='lh')
 brain_loose = stc.plot(subjects_dir=subjects_dir, initial_time=time_max,
                        time_unit='s', size=(600, 400), overlay_alpha=0)
+mne.viz.set_3d_view(figure=brain_loose, focalpoint=(0., 0., 50))
 
 ###############################################################################
 # Discarding dipole orientation information
@@ -210,19 +210,13 @@ brain_loose = stc.plot(subjects_dir=subjects_dir, initial_time=time_max,
 # Only retain vector magnitudes
 stc = apply_inverse(left_auditory, inv, pick_ori=None)
 
-# Visualize it at the moment of peak activity.
+# Visualize it at the moment of peak activity
 _, time_max = stc.get_peak(hemi='lh')
 brain = stc.plot(surface='white', subjects_dir=subjects_dir,
                  initial_time=time_max, time_unit='s', size=(600, 400))
+mne.viz.set_3d_view(figure=brain, focalpoint=(0., 0., 50))
 
 ###############################################################################
 # References
 # ----------
-# .. [1] Hämäläinen, M. S., Hari, R., Ilmoniemi, R. J., Knuutila, J., &
-#    Lounasmaa, O. V. "Magnetoencephalography - theory, instrumentation, and
-#    applications to noninvasive studies of the working human brain", Reviews
-#    of Modern Physics, 1993. https://doi.org/10.1103/RevModPhys.65.413
-#
-# .. [2] Lin, F. H., Belliveau, J. W., Dale, A. M., & Hämäläinen, M. S. (2006).
-#    Distributed current estimates using cortical orientation constraints.
-#    Human Brain Mapping, 27(1), 1–13. http://doi.org/10.1002/hbm.20155
+# .. footbibliography::

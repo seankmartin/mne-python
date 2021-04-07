@@ -14,12 +14,12 @@ from ..base import BaseRaw
 from ..utils import _read_segments_file, _create_chs
 from ..meas_info import _empty_info
 from ..constants import FIFF
-from ...utils import verbose, logger, warn
+from ...utils import verbose, logger, warn, _validate_type, _check_fname
 
 
 def _read_header(fid):
     """Read EGI binary header."""
-    version = np.fromfile(fid, np.int32, 1)[0]
+    version = np.fromfile(fid, '<i4', 1)[0]
 
     if version > 6 & ~np.bitwise_and(version, 6):
         version = version.byteswap().astype(np.uint32)
@@ -63,7 +63,6 @@ def _read_header(fid):
         for event in range(info['n_events']):
             event_codes = ''.join(np.fromfile(fid, 'S1', 4).astype('U1'))
             info['event_codes'].append(event_codes)
-        info['event_codes'] = np.array(info['event_codes'])
     else:
         raise NotImplementedError('Only continuous files are supported')
     info['unsegmented'] = unsegmented
@@ -93,9 +92,12 @@ def read_raw_egi(input_fname, eog=None, misc=None,
                  channel_naming='E%d', verbose=None):
     """Read EGI simple binary as raw object.
 
+    .. note:: This function attempts to create a synthetic trigger channel.
+              See the Notes section below.
+
     Parameters
     ----------
-    input_fname : str
+    input_fname : path-like
         Path to the raw file. Files with an extension .mff are automatically
         considered to be EGI's native MFF format files.
     eog : list or tuple
@@ -107,7 +109,7 @@ def read_raw_egi(input_fname, eog=None, misc=None,
     include : None | list
        The event channels to be ignored when creating the synthetic
        trigger. Defaults to None.
-       Note. Overrides `exclude` parameter.
+       Note. Overrides ``exclude`` parameter.
     exclude : None | list
        The event channels to be ignored when creating the synthetic
        trigger. Defaults to None. If None, channels that have more than
@@ -136,8 +138,8 @@ def read_raw_egi(input_fname, eog=None, misc=None,
     Notes
     -----
     The trigger channel names are based on the arbitrary user dependent event
-    codes used. However this function will attempt to generate a synthetic
-    trigger channel named ``STI 014`` in accordance with the general
+    codes used. However this function will attempt to generate a **synthetic
+    trigger channel** named ``STI 014`` in accordance with the general
     Neuromag / MNE naming pattern.
 
     The event_id assignment equals ``np.arange(n_events) + 1``. The resulting
@@ -148,6 +150,8 @@ def read_raw_egi(input_fname, eog=None, misc=None,
 
     This step will fail if events are not mutually exclusive.
     """
+    _validate_type(input_fname, 'path-like', 'input_fname')
+    input_fname = str(input_fname)
     if input_fname.endswith('.mff'):
         return _read_raw_egi_mff(input_fname, eog, misc, include,
                                  exclude, preload, channel_naming, verbose)
@@ -162,6 +166,7 @@ class RawEGI(BaseRaw):
     def __init__(self, input_fname, eog=None, misc=None,
                  include=None, exclude=None, preload=False,
                  channel_naming='E%d', verbose=None):  # noqa: D102
+        input_fname = _check_fname(input_fname, 'read', True, 'input_fname')
         if eog is None:
             eog = []
         if misc is None:
@@ -246,7 +251,7 @@ class RawEGI(BaseRaw):
         sti_ch_idx = [i for i, name in enumerate(ch_names) if
                       name.startswith('STI') or name in event_codes]
         for idx in sti_ch_idx:
-            chs[idx].update({'unit_mul': 0, 'cal': 1,
+            chs[idx].update({'unit_mul': FIFF.FIFF_UNITM_NONE, 'cal': 1.,
                              'kind': FIFF.FIFFV_STIM_CH,
                              'coil_type': FIFF.FIFFV_COIL_NONE,
                              'unit': FIFF.FIFF_UNIT_NONE})

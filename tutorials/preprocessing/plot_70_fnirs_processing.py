@@ -8,13 +8,8 @@ This tutorial covers how to convert functional near-infrared spectroscopy
 (fNIRS) data from raw measurements to relative oxyhaemoglobin (HbO) and
 deoxyhaemoglobin (HbR) concentration.
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 Here we will work with the :ref:`fNIRS motor data <fnirs-motor-dataset>`.
 """
-# sphinx_gallery_thumbnail_number = 1
 
 import os
 import numpy as np
@@ -25,8 +20,9 @@ import mne
 
 
 fnirs_data_folder = mne.datasets.fnirs_motor.data_path()
-fnirs_raw_dir = os.path.join(fnirs_data_folder, 'Participant-1')
-raw_intensity = mne.io.read_raw_nirx(fnirs_raw_dir, verbose=True).load_data()
+fnirs_cw_amplitude_dir = os.path.join(fnirs_data_folder, 'Participant-1')
+raw_intensity = mne.io.read_raw_nirx(fnirs_cw_amplitude_dir, verbose=True)
+raw_intensity.load_data()
 
 
 ###############################################################################
@@ -43,13 +39,13 @@ subjects_dir = mne.datasets.sample.data_path() + '/subjects'
 
 fig = mne.viz.create_3d_figure(size=(800, 600), bgcolor='white')
 fig = mne.viz.plot_alignment(raw_intensity.info, show_axes=True,
-                             subject='fsaverage',
+                             subject='fsaverage', coord_frame='mri',
                              trans='fsaverage', surfaces=['brain'],
                              fnirs=['channels', 'pairs',
                                     'sources', 'detectors'],
                              subjects_dir=subjects_dir, fig=fig)
-mne.viz.set_3d_view(figure=fig, azimuth=20, elevation=55, distance=0.6)
-
+mne.viz.set_3d_view(figure=fig, azimuth=20, elevation=60, distance=0.4,
+                    focalpoint=(0., -0.01, 0.02))
 
 ###############################################################################
 # Selecting channels appropriate for detecting neural responses
@@ -302,7 +298,7 @@ evoked_right.plot_topomap(ch_type='hbr', times=ts, axes=axes[1, 1],
                           vmin=vmin, vmax=vmax, colorbar=False,
                           **topomap_args)
 
-evoked_diff = mne.combine_evoked([evoked_left, -evoked_right], weights='equal')
+evoked_diff = mne.combine_evoked([evoked_left, evoked_right], weights=[1, -1])
 
 evoked_diff.plot_topomap(ch_type='hbo', times=ts, axes=axes[0, 2:],
                          vmin=vmin, vmax=vmax, colorbar=True,
@@ -327,7 +323,7 @@ mne.viz.plot_evoked_topo(epochs['Left'].average(picks='hbo'), color='b',
 mne.viz.plot_evoked_topo(epochs['Right'].average(picks='hbo'), color='r',
                          axes=axes, legend=False)
 
-# Tidy the legend
+# Tidy the legend.
 leg_lines = [line for line in axes.lines if line.get_c() == 'b'][:1]
 leg_lines.append([line for line in axes.lines if line.get_c() == 'r'][0])
 fig.legend(leg_lines, ['Left', 'Right'], loc='lower right')

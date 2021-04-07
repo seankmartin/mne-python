@@ -7,10 +7,18 @@
 #
 # License: Simplified BSD
 
+from contextlib import contextmanager
 import numpy as np
 import collections.abc
+from ...externals.decorator import decorator
 
-VALID_3D_BACKENDS = ['mayavi', 'pyvista']
+VALID_3D_BACKENDS = (
+    'pyvista',  # default 3d backend
+    'mayavi',
+    'notebook',
+)
+ALLOWED_QUIVER_MODES = ('2darrow', 'arrow', 'cone', 'cylinder', 'sphere',
+                        'oct')
 
 
 def _get_colormap_from_array(colormap=None, normalized_colormap=False,
@@ -36,16 +44,48 @@ def _check_color(color):
         np_color = np.array(color)
         if np_color.size % 3 != 0 and np_color.size % 4 != 0:
             raise ValueError("The expected valid format is RGB or RGBA.")
-        if np_color.dtype == np.int:
+        if np_color.dtype in (np.int64, np.int32):
             if (np_color < 0).any() or (np_color > 255).any():
                 raise ValueError("Values out of range [0, 255].")
-        elif np_color.dtype == np.float:
+        elif np_color.dtype == np.float64:
             if (np_color < 0.0).any() or (np_color > 1.0).any():
                 raise ValueError("Values out of range [0.0, 1.0].")
         else:
-            raise TypeError("Expected data type is `np.int` or `np.float` but "
-                            "{} was given.".format(np_color.dtype))
+            raise TypeError("Expected data type is `np.int64`, `np.int32`, or "
+                            "`np.float64` but {} was given."
+                            .format(np_color.dtype))
     else:
         raise TypeError("Expected type is `str` or iterable but "
                         "{} was given.".format(type(color)))
     return color
+
+
+def _alpha_blend_background(ctable, background_color):
+    alphas = ctable[:, -1][:, np.newaxis] / 255.
+    use_table = ctable.copy()
+    use_table[:, -1] = 255.
+    return (use_table * alphas) + background_color * (1 - alphas)
+
+
+@decorator
+def run_once(fun, *args, **kwargs):
+    """Run the function only once."""
+    if not hasattr(fun, "_has_run"):
+        fun._has_run = True
+        return fun(*args, **kwargs)
+
+
+@run_once
+def _init_qt_resources():
+    from ...icons import resources
+    resources.qInitResources()
+
+
+@contextmanager
+def _qt_disable_paint(widget):
+    paintEvent = widget.paintEvent
+    widget.paintEvent = lambda *args, **kwargs: None
+    try:
+        yield
+    finally:
+        widget.paintEvent = paintEvent

@@ -266,6 +266,10 @@
 
 .. _Robert Luke: https://github.com/rob-luke
 
+.. _Robert Seymour: https://neurofractal.github.io
+
+.. _Matt Sanderson: https://github.com/monkeyman192
+
 .. _Mohammad Daneshzand: https://github.com/mdaneshzand
 
 .. _Fahimeh Mamashli: https://github.com/fmamashli
@@ -298,10 +302,88 @@
 
 .. _Adam Li: http://github.com/adam2392
 
+.. _Simeon Wong: https://github.com/dtxe
+
 .. _Ramiro Gatti: https://github.com/ragatti
+
+.. _Liberty Hamilton: https://github.com/libertyh
 
 .. _Svea Marie Meyer: https://github.com/SveaMeyer13
 
 .. _Lx37: https://github.com/Lx37
 
 .. _Kyle Mathewson: https://github.com/kylemath
+
+.. _Ezequiel Mikulan: https://github.com/ezemikulan
+
+.. _Jan Sedivy: https://github.com/honzaseda
+
+.. _Johann Benerradi: https://github.com/HanBnrd
+
+.. _Rahul Nadkarni: https://github.com/rahuln
+
+.. _Jonathan Kuziek:  https://github.com/kuziekj
+
+.. _Lau Møller Andersen: https://github.com/ualsbombe
+
+.. _Martin Schulz: https://github.com/marsipu
+
+.. _Jeroen Van Der Donckt: https://github.com/jvdd
+
+.. _Steven Bierer: https://github.com/neurolaunch
+
+.. _Eduard Ort: https://github.com/eort
+
+.. _Aniket Pradhan: https://github.com/Aniket-Pradhan
+
+.. _Tod Flak: https://github.com/todflak
+
+.. _Austin Hurst: https://github.com/a-hurst
+
+.. _Victoria Peterson: https://github.com/vpeterson
+
+.. _Evan Hathaway: https://github.com/ephathaway
+
+.. _Hongjiang Ye: https://github.com/rubyyhj
+
+.. _Jeff Stout: https://megcore.nih.gov/index.php/Staff
+
+.. _Qianliang Li: https://www.dtu.dk/english/service/phonebook/person?id=126774
+
+.. _Richard Koehler: https://github.com/richardkoehler
+
+.. _Tristan Stenner: https://github.com/tstenner/
+
+.. _Anna Padee: https://github.com/apadee/
+
+.. _Andres Rodriguez: https://github.com/infinitejest/
+
+.. _Rotem Falach: https://github.com/Falach
+
+.. _Zhi Zhang: https://github.com/tczhangzhi/
+
+.. _Enrico Varano: https://github.com/enricovara/
+
+.. _Dominik Welke: https://github.com/dominikwelke/
+
+.. _Judy D Zhu: https://github.com/JD-Zhu
+
+.. _Valerii Chirkov: https://github.com/vagechirkov
+
+.. _Maggie Clarke: https://github.com/mdclarke
+
+.. _Apoorva Karekal: https://github.com/apoorva6262
+
+.. _Matteo Anelli: https://github.com/matteoanelli
+
+.. _Cora Kim: https://github.com/kimcoco
+
+.. _Silvia Cotroneo: https://github.com/sfc-neuro
+
+.. _Ram Pari: https://github.com/ramkpari
+
+.. _Erica Peterson: https://github.com/nordme
+
+.. _Sumalyo Datta: https://github.com/Sumalyo
+
+.. _Jack Zhang: https://github.com/jackz314

@@ -8,10 +8,6 @@
 MNE-MATLAB documentation
 ========================
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 .. note:: The MNE MATLAB Toolbox is compatible with Matlab versions 7.0 or later.
 
 Overview
@@ -20,8 +16,8 @@ Overview
 The MNE software contains a collection Matlab ``.m``-files to
 facilitate interfacing with binary file formats of the MNE software.
 The toolbox is located at ``$MNE_ROOT/share/matlab`` . The
-names of the MNE Matlab toolbox functions begin either with `mne_` or
-with `fiff_` . When you source the ``mne_setup`` script
+names of the MNE Matlab toolbox functions begin either with ``mne_`` or
+with ``fiff_`` . When you source the ``mne_setup`` script
 as described in :ref:`user_environment`, one of the following actions
 takes place:
 

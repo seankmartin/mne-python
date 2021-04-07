@@ -7,7 +7,7 @@ import pytest
 
 from mne import create_info
 from mne.io import RawArray
-from mne.utils import logger, catch_logging, run_tests_if_main
+from mne.utils import logger, catch_logging
 
 
 def bad_1(x):
@@ -59,10 +59,7 @@ def test_apply_function_verbose():
     # check our arguments
     with catch_logging() as sio:
         out = raw.apply_function(printer, verbose=False)
-        assert len(sio.getvalue()) == 0
+        assert len(sio.getvalue(close=False)) == 0
         assert out is raw
         raw.apply_function(printer, verbose=True)
         assert sio.getvalue().count('\n') == n_chan
-
-
-run_tests_if_main()

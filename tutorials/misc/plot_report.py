@@ -7,15 +7,12 @@ Getting started with ``mne.Report``
 This tutorial covers making interactive HTML summaries with
 :class:`mne.Report`.
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 As usual we'll start by importing the modules we need and loading some
 :ref:`example data <sample-dataset>`:
 """
 
 import os
+import matplotlib.pyplot as plt
 import mne
 
 ###############################################################################
@@ -25,19 +22,23 @@ import mne
 # .. cssclass:: table-bordered
 # .. rst-class:: midvalign
 #
-# ============ ==============================================================
-# Data object  Filename convention (ends with)
-# ============ ==============================================================
-# raw          -raw.fif(.gz), -raw_sss.fif(.gz), -raw_tsss.fif(.gz), _meg.fif
-# events       -eve.fif(.gz)
-# epochs       -epo.fif(.gz)
-# evoked       -ave.fif(.gz)
-# covariance   -cov.fif(.gz)
-# trans        -trans.fif(.gz)
-# forward      -fwd.fif(.gz)
-# inverse      -inv.fif(.gz)
-# ============ ==============================================================
+# ============== ==============================================================
+# Data object    Filename convention (ends with)
+# ============== ==============================================================
+# raw            -raw.fif(.gz), -raw_sss.fif(.gz), -raw_tsss.fif(.gz),
+#                _meg.fif(.gz), _eeg.fif(.gz), _ieeg.fif(.gz)
+# events         -eve.fif(.gz)
+# epochs         -epo.fif(.gz)
+# evoked         -ave.fif(.gz)
+# covariance     -cov.fif(.gz)
+# SSP projectors -proj.fif(.gz)
+# trans          -trans.fif(.gz)
+# forward        -fwd.fif(.gz)
+# inverse        -inv.fif(.gz)
+# ============== ==============================================================
 #
+# Alternatively, the dash ``-`` in the filename may be replaced with an
+# underscore ``_``.
 #
 # Basic reports
 # ^^^^^^^^^^^^^
@@ -67,20 +68,35 @@ import mne
 path = mne.datasets.sample.data_path(verbose=False)
 report = mne.Report(verbose=True)
 report.parse_folder(path, pattern='*raw.fif', render_bem=False)
-report.save('report_basic.html')
+report.save('report_basic.html', overwrite=True)
 
 ###############################################################################
 # This report yields a textual summary of the :class:`~mne.io.Raw` files
 # selected by the pattern. For a slightly more useful report, we'll ask for the
 # power spectral density of the :class:`~mne.io.Raw` files, by passing
-# ``raw_psd=True`` to the :class:`~mne.Report` constructor. Let's also refine
-# our pattern to select only the filtered raw recording (omitting the
-# unfiltered data and the empty-room noise recordings):
+# ``raw_psd=True`` to the :class:`~mne.Report` constructor. We'll also
+# visualize the SSP projectors stored in the raw data's `~mne.Info` dictionary
+# by setting ``projs=True``. Lastly, let's also refine our pattern to select
+# only the filtered raw recording (omitting the unfiltered data and the
+# empty-room noise recordings):
 
 pattern = 'sample_audvis_filt-0-40_raw.fif'
-report = mne.Report(verbose=True, raw_psd=True)
+report = mne.Report(raw_psd=True, projs=True, verbose=True)
 report.parse_folder(path, pattern=pattern, render_bem=False)
-report.save('report_raw_psd.html')
+report.save('report_raw_psd.html', overwrite=True)
+
+###############################################################################
+# The sample dataset also contains SSP projectors stored as *individual files*.
+# To add them to a report, we also have to provide the path to a file
+# containing an `~mne.Info` dictionary, from which the channel locations can be
+# read.
+
+info_fname = os.path.join(path, 'MEG', 'sample',
+                          'sample_audvis_filt-0-40_raw.fif')
+pattern = 'sample_audvis_*proj.fif'
+report = mne.Report(info_fname=info_fname, verbose=True)
+report.parse_folder(path, pattern=pattern, render_bem=False)
+report.save('report_proj.html', overwrite=True)
 
 ###############################################################################
 # This time we'll pass a specific ``subject`` and ``subjects_dir`` (even though
@@ -93,27 +109,50 @@ report.save('report_raw_psd.html')
 subjects_dir = os.path.join(path, 'subjects')
 report = mne.Report(subject='sample', subjects_dir=subjects_dir, verbose=True)
 report.parse_folder(path, pattern='', mri_decim=25)
-report.save('report_mri_bem.html')
+report.save('report_mri_bem.html', overwrite=True)
 
 ###############################################################################
 # Now let's look at how :class:`~mne.Report` handles :class:`~mne.Evoked` data
-# (we'll skip the MRIs to save computation time):
+# (we will skip the MRIs to save computation time). The following code will
+# produce butterfly plots, topomaps, and comparisons of the global field
+# power (GFP) for different experimental conditions.
 
 pattern = 'sample_audvis-no-filter-ave.fif'
 report = mne.Report(verbose=True)
 report.parse_folder(path, pattern=pattern, render_bem=False)
-report.save('report_evoked.html')
+report.save('report_evoked.html', overwrite=True)
 
 ###############################################################################
-# To render whitened :class:`~mne.Evoked` files with baseline correction, add
-# the noise covariance file. This will display ERP/F plots for both the
-# original and whitened :class:`~mne.Evoked` objects, but scalp topomaps only
-# for the original.
+# You have probably noticed that the EEG recordings look particularly odd. This
+# is because by default, `~mne.Report` does not apply baseline correction
+# before rendering evoked data. So if the dataset you wish to add to the report
+# has not been baseline-corrected already, you can request baseline correction
+# here. The MNE sample dataset we're using in this example has **not** been
+# baseline-corrected; so let's do this now for the report!
+#
+# To request baseline correction, pass a ``baseline`` argument to
+# `~mne.Report`, which should be a tuple with the starting and ending time of
+# the baseline period. For more details, see the documentation on
+# `~mne.Evoked.apply_baseline`. Here, we will apply baseline correction for a
+# baseline period from the beginning of the time interval to time point zero.
+
+baseline = (None, 0)
+pattern = 'sample_audvis-no-filter-ave.fif'
+report = mne.Report(baseline=baseline, verbose=True)
+report.parse_folder(path, pattern=pattern, render_bem=False)
+report.save('report_evoked_baseline.html', overwrite=True)
+
+###############################################################################
+# To render whitened :class:`~mne.Evoked` files with baseline correction, pass
+# the ``baseline`` argument we just used, and add the noise covariance file.
+# This will display ERP/ERF plots for both the original and whitened
+# :class:`~mne.Evoked` objects, but scalp topomaps only for the original.
 
 cov_fname = os.path.join(path, 'MEG', 'sample', 'sample_audvis-cov.fif')
-report = mne.Report(cov_fname=cov_fname, verbose=True)
+baseline = (None, 0)
+report = mne.Report(cov_fname=cov_fname, baseline=baseline, verbose=True)
 report.parse_folder(path, pattern=pattern, render_bem=False)
-report.save('report_evoked_whitened.html')
+report.save('report_evoked_whitened.html', overwrite=True)
 
 ###############################################################################
 # If you want to actually *view* the noise covariance in the report, make sure
@@ -127,27 +166,87 @@ pattern = 'sample_audvis-cov.fif'
 info_fname = os.path.join(path, 'MEG', 'sample', 'sample_audvis-ave.fif')
 report = mne.Report(info_fname=info_fname, verbose=True)
 report.parse_folder(path, pattern=pattern, render_bem=False)
-report.save('report_cov.html')
+report.save('report_cov.html', overwrite=True)
 
 ###############################################################################
 # Adding custom plots to a report
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# The python interface has greater flexibility compared to the :ref:`command
-# line interface <gen_mne_report>`. For example, custom plots can be added via
+# The Python interface has greater flexibility compared to the :ref:`command
+# line interface <mne report>`. For example, custom plots can be added via
 # the :meth:`~mne.Report.add_figs_to_section` method:
 
-# generate a custom plot:
-fname_evoked = os.path.join(path, 'MEG', 'sample', 'sample_audvis-ave.fif')
-evoked = mne.read_evokeds(fname_evoked,
-                          condition='Left Auditory',
-                          baseline=(None, 0),
-                          verbose=True)
-fig = evoked.plot(show=False)
+report = mne.Report(verbose=True)
 
-# add the custom plot to the report:
-report.add_figs_to_section(fig, captions='Left Auditory', section='evoked')
-report.save('report_custom.html')
+fname_raw = os.path.join(path, 'MEG', 'sample', 'sample_audvis_raw.fif')
+raw = mne.io.read_raw_fif(fname_raw, verbose=False).crop(tmax=60)
+events = mne.find_events(raw, stim_channel='STI 014')
+event_id = {'auditory/left': 1, 'auditory/right': 2, 'visual/left': 3,
+            'visual/right': 4, 'face': 5, 'buttonpress': 32}
+
+# create some epochs and ensure we drop a few, so we can then plot the drop log
+reject = dict(eeg=150e-6)
+epochs = mne.Epochs(raw=raw, events=events, event_id=event_id,
+                    tmin=-0.2, tmax=0.7, reject=reject, preload=True)
+fig_drop_log = epochs.plot_drop_log(subject='sample', show=False)
+
+# now also plot an evoked response
+evoked_aud_left = epochs['auditory/left'].average()
+fig_evoked = evoked_aud_left.plot(spatial_colors=True, show=False)
+
+# add the custom plots to the report:
+report.add_figs_to_section([fig_drop_log, fig_evoked],
+                           captions=['Dropped Epochs',
+                                     'Evoked: Left Auditory'],
+                           section='drop-and-evoked')
+report.save('report_custom.html', overwrite=True)
+
+###############################################################################
+# Adding a slider
+# ^^^^^^^^^^^^^^^
+#
+# Sliders provide an intuitive way for users to interactively browse a
+# predefined set of images. You can add sliders via
+# :meth:`~mne.Report.add_slider_to_section`:
+
+report = mne.Report(verbose=True)
+
+figs = list()
+times = evoked_aud_left.times[::30]
+for t in times:
+    figs.append(evoked_aud_left.plot_topomap(t, vmin=-300, vmax=300, res=100,
+                show=False))
+    plt.close(figs[-1])
+report.add_slider_to_section(figs, times, 'Evoked Response',
+                             image_format='png')  # can also use 'svg'
+
+report.save('report_slider.html', overwrite=True)
+
+###############################################################################
+# Adding ``SourceEstimate`` (STC) plot to a report
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#
+# Now we see how :class:`~mne.Report` handles :class:`~mne.SourceEstimate`
+# data. The following will produce a source time course (STC) plot with vertex
+# time courses. In this scenario, we also demonstrate how to use the
+# :meth:`mne.viz.Brain.screenshot` method to save the figs in a slider.
+
+report = mne.Report(verbose=True)
+fname_stc = os.path.join(path, 'MEG', 'sample', 'sample_audvis-meg')
+stc = mne.read_source_estimate(fname_stc, subject='sample')
+figs = list()
+kwargs = dict(subjects_dir=subjects_dir, initial_time=0.13,
+              clim=dict(kind='value', lims=[3, 6, 9]))
+for hemi in ('lh', 'rh'):
+    brain = stc.plot(hemi=hemi, **kwargs)
+    brain.toggle_interface(False)
+    figs.append(brain.screenshot(time_viewer=True))
+    brain.close()
+
+# add the stc plot to the report:
+report.add_slider_to_section(figs)
+
+report.save('report_stc.html', overwrite=True)
 
 ###############################################################################
 # Managing report sections
@@ -159,13 +258,14 @@ report.save('report_custom.html')
 # :meth:`~mne.Report.add_figs_to_section` command. Each section is identified
 # by a toggle button in the top navigation bar of the report which can be used
 # to show or hide the contents of the section. To toggle the show/hide state of
-# all sections in the HTML report, press :kbd:`t`.
+# all sections in the HTML report, press :kbd:`t`, or press the toggle-all
+# button in the upper right.
 #
-# .. note::
+# .. sidebar:: Structure
 #
-#    Although we've been generating separate reports in each example, you could
-#    easily create a single report for all :file:`.fif` files (raw, evoked,
-#    covariance, etc) by passing ``pattern='*.fif'``.
+#    Although we've been generating separate reports in each of these examples,
+#    you could easily create a single report for all :file:`.fif` files (raw,
+#    evoked, covariance, etc) by passing ``pattern='*.fif'``.
 #
 #
 # Editing a saved report
@@ -186,11 +286,11 @@ print(report_from_disk)
 # context manager:
 
 with mne.open_report('report.h5') as report:
-    report.add_figs_to_section(fig,
+    report.add_figs_to_section(fig_evoked,
                                captions='Left Auditory',
                                section='evoked',
                                replace=True)
-    report.save('report_final.html')
+    report.save('report_final.html', overwrite=True)
 
 ###############################################################################
 # With the context manager, the updated report is also automatically saved

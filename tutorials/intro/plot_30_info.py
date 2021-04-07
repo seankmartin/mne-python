@@ -9,10 +9,6 @@ This tutorial describes the :class:`mne.Info` data structure, which keeps track
 of various recording details, and is attached to :class:`~mne.io.Raw`,
 :class:`~mne.Epochs`, and :class:`~mne.Evoked` objects.
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 We'll begin by loading the Python modules we need, and loading the same
 :ref:`example data <sample-dataset>` we used in the :ref:`introductory tutorial
 <tut-overview>`:
@@ -183,6 +179,11 @@ print(ch_idx_by_type['eog'])
 print(info['nchan'])
 eeg_indices = mne.pick_types(info, meg=False, eeg=True)
 print(mne.pick_info(info, eeg_indices)['nchan'])
+
+###############################################################################
+# We can also get a nice HTML representation in IPython like:
+
+info
 
 ###############################################################################
 # By default, :func:`~mne.pick_info` will make a copy of the original

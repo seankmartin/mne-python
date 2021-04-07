@@ -8,11 +8,6 @@ Statistical inference
 
 Here we will briefly cover multiple concepts of inferential statistics in an
 introductory manner, and demonstrate how to use some MNE statistical functions.
-
-.. contents:: Topics
-   :local:
-   :depth: 3
-
 """
 
 # Authors: Eric Larson <larson.eric.d@gmail.com>
@@ -46,9 +41,9 @@ print(__doc__)
 # some probability (e.g., p < 0.05). This probability is also called the
 # significance level :math:`\alpha`.
 # To think about what this means, let's follow the illustrative example from
-# [1]_ and construct a toy dataset consisting of a 40 x 40 square with a
-# "signal" present in the center with white noise added and a Gaussian
-# smoothing kernel applied.
+# :footcite:`RidgwayEtAl2012` and construct a toy dataset consisting of a
+# 40 x 40 square with a "signal" present in the center with white noise added
+# and a Gaussian smoothing kernel applied.
 
 width = 40
 n_subjects = 10
@@ -173,7 +168,8 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # "Hat" variance adjustment
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 # The "hat" technique regularizes the variance values used in the t-test
-# calculation [1]_ to compensate for implausibly small variances.
+# calculation :footcite:`RidgwayEtAl2012` to compensate for implausibly small
+# variances.
 ts.append(ttest_1samp_no_p(X, sigma=sigma))
 ps.append(stats.distributions.t.sf(np.abs(ts[-1]), len(X) - 1) * 2)
 titles.append(r'$\mathrm{t_{hat}}$')
@@ -350,7 +346,7 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # Each of the aforementioned multiple comparisons corrections have the
 # disadvantage of not fully incorporating the correlation structure of the
 # data, namely that points close to one another (e.g., in space or time) tend
-# to be correlated. However, by defining the connectivity/adjacency/neighbor
+# to be correlated. However, by defining the adjacency/adjacency/neighbor
 # structure in our data, we can use **clustering** to compensate.
 #
 # To use this, we need to rethink our null hypothesis. Instead
@@ -408,17 +404,17 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # data. For more information, see also the comprehensive
 # `FieldTrip tutorial <ft_cluster_>`_.
 #
-# Defining the connectivity/neighbor/adjacency matrix
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# First we need to define our connectivity/neighbor/adjacency matrix.
+# Defining the adjacency matrix
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# First we need to define our adjacency (sometimes called "neighbors") matrix.
 # This is a square array (or sparse matrix) of shape ``(n_src, n_src)`` that
-# contains zeros and ones to define which spatial points are connected, i.e.,
+# contains zeros and ones to define which spatial points are neighbors, i.e.,
 # which voxels are adjacent to each other. In our case this
 # is quite simple, as our data are aligned on a rectangular grid.
 #
 # Let's pretend that our data were smaller -- a 3 x 3 grid. Thinking about
 # each voxel as being connected to the other voxels it touches, we would
-# need a 9 x 9 connectivity matrix. The first row of this matrix contains the
+# need a 9 x 9 adjacency matrix. The first row of this matrix contains the
 # voxels in the flattened data that the first voxel touches. Since it touches
 # the second element in the first row and the first element in the second row
 # (and is also a neighbor to itself), this would be::
@@ -428,20 +424,20 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # :mod:`sklearn.feature_extraction` provides a convenient function for this:
 
 from sklearn.feature_extraction.image import grid_to_graph  # noqa: E402
-mini_connectivity = grid_to_graph(3, 3).toarray()
-assert mini_connectivity.shape == (9, 9)
-print(mini_connectivity[0])
+mini_adjacency = grid_to_graph(3, 3).toarray()
+assert mini_adjacency.shape == (9, 9)
+print(mini_adjacency[0])
 
 ###############################################################################
-# In general the connectivity between voxels can be more complex, such as
+# In general the adjacency between voxels can be more complex, such as
 # those between sensors in 3D space, or time-varying activation at brain
 # vertices on a cortical surface. MNE provides several convenience functions
-# for computing connectivity/neighbor/adjacency matrices (see the
+# for computing adjacency matrices (see the
 # :ref:`Statistics API <api_reference_statistics>`).
 #
 # Standard clustering
 # ~~~~~~~~~~~~~~~~~~~
-# Here, since our data are on a grid, we can use ``connectivity=None`` to
+# Here, since our data are on a grid, we can use ``adjacency=None`` to
 # trigger optimized grid-based code, and run the clustering algorithm.
 
 titles.append('Clustering')
@@ -450,7 +446,7 @@ X.shape = (n_subjects, width, width)
 # Compute threshold from t distribution (this is also the default)
 threshold = stats.distributions.t.ppf(1 - alpha, n_subjects - 1)
 t_clust, clusters, p_values, H0 = permutation_cluster_1samp_test(
-    X, n_jobs=1, threshold=threshold, connectivity=None,
+    X, n_jobs=1, threshold=threshold, adjacency=None,
     n_permutations=n_permutations, out_type='mask')
 # Put the cluster data in a viewable format
 p_clust = np.ones((width, width))
@@ -465,11 +461,11 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # "Hat" variance adjustment
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 # This method can also be used in this context to correct for small
-# variances [1]_:
+# variances :footcite:`RidgwayEtAl2012`:
 titles.append(r'$\mathbf{C_{hat}}$')
 stat_fun_hat = partial(ttest_1samp_no_p, sigma=sigma)
 t_hat, clusters, p_values, H0 = permutation_cluster_1samp_test(
-    X, n_jobs=1, threshold=threshold, connectivity=None, out_type='mask',
+    X, n_jobs=1, threshold=threshold, adjacency=None, out_type='mask',
     n_permutations=n_permutations, stat_fun=stat_fun_hat, buffer_size=None)
 p_hat = np.ones((width, width))
 for cl, p in zip(clusters, p_values):
@@ -487,7 +483,8 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # TFCE eliminates the free parameter initial ``threshold`` value that
 # determines which points are included in clustering by approximating
 # a continuous integration across possible threshold values with a standard
-# `Riemann sum <https://en.wikipedia.org/wiki/Riemann_sum>`__ [2]_.
+# `Riemann sum <https://en.wikipedia.org/wiki/Riemann_sum>`__
+# :footcite:`SmithNichols2009`.
 # This requires giving a starting threshold ``start`` and a step
 # size ``step``, which in MNE is supplied as a dict.
 # The smaller the ``step`` and closer to 0 the ``start`` value,
@@ -504,7 +501,7 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 titles.append(r'$\mathbf{C_{TFCE}}$')
 threshold_tfce = dict(start=0, step=0.2)
 t_tfce, _, p_tfce, H0 = permutation_cluster_1samp_test(
-    X, n_jobs=1, threshold=threshold_tfce, connectivity=None,
+    X, n_jobs=1, threshold=threshold_tfce, adjacency=None,
     n_permutations=n_permutations, out_type='mask')
 ts.append(t_tfce)
 ps.append(p_tfce)
@@ -515,7 +512,7 @@ plot_t_p(ts[-1], ps[-1], titles[-1], mccs[-1])
 # We can also combine TFCE and the "hat" correction:
 titles.append(r'$\mathbf{C_{hat,TFCE}}$')
 t_tfce_hat, _, p_tfce_hat, H0 = permutation_cluster_1samp_test(
-    X, n_jobs=1, threshold=threshold_tfce, connectivity=None, out_type='mask',
+    X, n_jobs=1, threshold=threshold_tfce, adjacency=None, out_type='mask',
     n_permutations=n_permutations, stat_fun=stat_fun_hat, buffer_size=None)
 ts.append(t_tfce_hat)
 ps.append(p_tfce_hat)
@@ -632,19 +629,19 @@ plt.show()
 # ^^^^^^^^^^^^^^^^^^^^^^
 #
 # - :func:`mne.stats.permutation_cluster_test`
-#     Unpaired contrasts with connectivity.
+#     Unpaired contrasts with clustering.
 #
 # - :func:`mne.stats.spatio_temporal_cluster_test`
-#     Unpaired contrasts with spatio-temporal connectivity.
+#     Unpaired contrasts with spatio-temporal clustering.
 #
 # - :func:`mne.stats.permutation_t_test`
-#     Paired contrast with no connectivity.
+#     Paired contrast with no clustering.
 #
 # - :func:`mne.stats.permutation_cluster_1samp_test`
-#     Paired contrasts with connectivity.
+#     Paired contrasts with clustering.
 #
 # - :func:`mne.stats.spatio_temporal_cluster_1samp_test`
-#     Paired contrasts with spatio-temporal connectivity.
+#     Paired contrasts with spatio-temporal clustering.
 #
 # .. warning:: In most MNE functions, data has shape
 #              ``(..., n_space, n_time)``, where the spatial dimension can
@@ -657,12 +654,6 @@ plt.show()
 #
 # References
 # ----------
-# .. [1] Ridgway et al. 2012, "The problem of low variance voxels in
-#        statistical parametric mapping; a new hat avoids a 'haircut'",
-#        NeuroImage. 2012 Feb 1;59(3):2131-41.
-#
-# .. [2] Smith and Nichols 2009, "Threshold-free cluster enhancement:
-#        addressing problems of smoothing, threshold dependence, and
-#        localisation in cluster inference", NeuroImage 44 (2009) 83-98.
+# .. footbibliography::
 #
 # .. include:: ../../links.inc

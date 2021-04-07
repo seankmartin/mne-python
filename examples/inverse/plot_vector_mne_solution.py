@@ -1,4 +1,7 @@
 """
+
+.. _ex-vector-mne-solution:
+
 ============================================
 Plotting the full vector-valued MNE solution
 ============================================
@@ -15,12 +18,13 @@ estimated magnitude. This can be accomplished by computing a
 It can also be instructive to visualize the actual dipole/activation locations
 in 3D space in a glass brain, as opposed to activations imposed on an inflated
 surface (as typically done in :meth:`mne.SourceEstimate.plot`), as it allows
-you to get a better sense of the true underlying source geometry.
+you to get a better sense of the underlying source geometry.
 """
 # Author: Marijn van Vliet <w.m.vanvliet@gmail.com>
 #
 # License: BSD (3-clause)
 
+import numpy as np
 import mne
 from mne.datasets import sample
 from mne.minimum_norm import read_inverse_operator, apply_inverse
@@ -49,8 +53,33 @@ _, peak_time = stc.magnitude().get_peak(hemi='lh')
 
 ###############################################################################
 # Plot the source estimate:
+
+# sphinx_gallery_thumbnail_number = 2
 brain = stc.plot(
     initial_time=peak_time, hemi='lh', subjects_dir=subjects_dir)
+
+# You can save a brain movie with:
+# brain.save_movie(time_dilation=20, tmin=0.05, tmax=0.16, framerate=10,
+#                  interpolation='linear', time_viewer=True)
+
+###############################################################################
+# Plot the activation in the direction of maximal power for this data:
+
+stc_max, directions = stc.project('pca', src=inv['src'])
+# These directions must by design be close to the normals because this
+# inverse was computed with loose=0.2
+print('Absolute cosine similarity between source normals and directions: '
+      f'{np.abs(np.sum(directions * inv["source_nn"][2::3], axis=-1)).mean()}')
+brain_max = stc_max.plot(
+    initial_time=peak_time, hemi='lh', subjects_dir=subjects_dir,
+    time_label='Max power')
+
+###############################################################################
+# The normal is very similar:
+
+brain_normal = stc.project('normal', inv['src'])[0].plot(
+    initial_time=peak_time, hemi='lh', subjects_dir=subjects_dir,
+    time_label='Normal')
 
 ###############################################################################
 # You can also do this with a fixed-orientation inverse. It looks a lot like

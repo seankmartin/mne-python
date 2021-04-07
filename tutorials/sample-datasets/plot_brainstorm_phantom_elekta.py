@@ -7,16 +7,13 @@ Brainstorm Elekta phantom dataset tutorial
 ==========================================
 
 Here we compute the evoked from raw for the Brainstorm Elekta phantom
-tutorial dataset. For comparison, see [1]_ and:
+tutorial dataset. For comparison, see :footcite:`TadelEtAl2011` and:
 
     https://neuroimage.usc.edu/brainstorm/Tutorials/PhantomElekta
 
 References
 ----------
-.. [1] Tadel F, Baillet S, Mosher JC, Pantazis D, Leahy RM.
-       Brainstorm: A User-Friendly Application for MEG/EEG Analysis.
-       Computational Intelligence and Neuroscience, vol. 2011, Article ID
-       879716, 13 pages, 2011. doi:10.1155/2011/879716
+.. footbibliography::
 """
 # sphinx_gallery_thumbnail_number = 9
 
@@ -87,7 +84,7 @@ epochs['1'].average().plot(time_unit='s')
 sphere = mne.make_sphere_model(r0=(0., 0., 0.), head_radius=0.08)
 
 mne.viz.plot_alignment(epochs.info, subject=subject, show_axes=True,
-                       bem=sphere, dig=True, surfaces='inner_skull')
+                       bem=sphere, dig=True, surfaces='head')
 
 ###############################################################################
 # Let's do some dipole fits. We first compute the noise covariance,

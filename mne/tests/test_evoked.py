@@ -21,8 +21,7 @@ from mne import (equalize_channels, pick_types, read_evokeds, write_evokeds,
 from mne.evoked import _get_peak, Evoked, EvokedArray
 from mne.io import read_raw_fif
 from mne.io.constants import FIFF
-from mne.utils import (_TempDir, requires_pandas,
-                       run_tests_if_main, grand_average)
+from mne.utils import _TempDir, requires_pandas, grand_average
 
 base_dir = op.join(op.dirname(__file__), '..', 'io', 'tests', 'data')
 fname = op.join(base_dir, 'test-ave.fif')
@@ -201,12 +200,29 @@ def test_io_evoked(tmpdir):
             assert_equal(av1.first, av2.first)
             assert_equal(av1.comment, av2.comment)
 
+    # test saving and reading complex numbers in evokeds
+    ave_complex = ave.copy()
+    ave_complex._data = 1j * ave_complex.data
+    fname_temp = str(tmpdir.join('complex-ave.fif'))
+    ave_complex.save(fname_temp)
+    ave_complex = read_evokeds(fname_temp)[0]
+    assert_allclose(ave.data, ave_complex.data.imag)
+
     # test warnings on bad filenames
     fname2 = tmpdir.join('test-bad-name.fif')
     with pytest.warns(RuntimeWarning, match='-ave.fif'):
         write_evokeds(fname2, ave)
     with pytest.warns(RuntimeWarning, match='-ave.fif'):
         read_evokeds(fname2)
+
+    # test writing when order of bads doesn't match
+    fname3 = tmpdir.join('test-bad-order-ave.fif')
+    condition = 'Left Auditory'
+    ave4 = read_evokeds(fname, condition)
+    ave4.info['bads'] = ave4.ch_names[:3]
+    ave5 = ave4.copy()
+    ave5.info['bads'] = ave4.info['bads'][::-1]
+    write_evokeds(fname3, [ave4, ave5])
 
     # constructor
     pytest.raises(TypeError, Evoked, fname)
@@ -284,6 +300,13 @@ def test_shift_time_evoked():
     assert_array_almost_equal(ave.times, ave_loaded.times, 8)
 
 
+def test_tmin_tmax():
+    """Test that the tmin and tmax attributes return the correct time."""
+    evoked = read_evokeds(fname, 0)
+    assert evoked.times[0] == evoked.tmin
+    assert evoked.times[-1] == evoked.tmax
+
+
 def test_evoked_resample():
     """Test resampling evoked data."""
     tempdir = _TempDir()
@@ -325,7 +348,7 @@ def test_evoked_resample():
 def test_evoked_filter():
     """Test filtering evoked data."""
     # this is mostly a smoke test as the Epochs and raw tests are more complete
-    ave = read_evokeds(fname, 0).pick_types('grad')
+    ave = read_evokeds(fname, 0).pick_types(meg='grad')
     ave.data[:] = 1.
     assert round(ave.info['lowpass']) == 172
     ave_filt = ave.copy().filter(None, 40., fir_design='firwin')
@@ -528,64 +551,47 @@ def test_equalize_channels():
 def test_arithmetic():
     """Test evoked arithmetic."""
     ev = read_evokeds(fname, condition=0)
-    ev1 = EvokedArray(np.ones_like(ev.data), ev.info, ev.times[0], nave=20)
-    ev2 = EvokedArray(-np.ones_like(ev.data), ev.info, ev.times[0], nave=10)
+    ev20 = EvokedArray(np.ones_like(ev.data), ev.info, ev.times[0], nave=20)
+    ev30 = EvokedArray(np.ones_like(ev.data), ev.info, ev.times[0], nave=30)
 
-    # combine_evoked([ev1, ev2]) should be the same as ev1 + ev2:
-    # data should be added according to their `nave` weights
-    # nave = ev1.nave + ev2.nave
-    ev = combine_evoked([ev1, ev2], weights='nave')
-    assert_allclose(ev.nave, ev1.nave + ev2.nave)
-    assert_allclose(ev.data, 1. / 3. * np.ones_like(ev.data))
-
-    # with same trial counts, a bunch of things should be equivalent
-    for weights in ('nave', [0.5, 0.5]):
-        ev = combine_evoked([ev1, ev1], weights=weights)
-        assert_allclose(ev.data, ev1.data)
-        assert_allclose(ev.nave, 2 * ev1.nave)
-        ev = combine_evoked([ev1, -ev1], weights=weights)
-        assert_allclose(ev.data, 0., atol=1e-20)
-        assert_allclose(ev.nave, 2 * ev1.nave)
-    # adding evoked to itself
-    ev = combine_evoked([ev1, ev1], weights='equal')
-    assert_allclose(ev.data, 2 * ev1.data)
-    assert_allclose(ev.nave, ev1.nave / 2)
-    # subtracting evoked from itself
-    ev = combine_evoked([ev1, -ev1], weights='equal')
-    assert_allclose(ev.data, 0., atol=1e-20)
-    assert_allclose(ev.nave, ev1.nave / 2)
-    # subtracting different evokeds
-    ev = combine_evoked([ev1, -ev2], weights='equal')
-    assert_allclose(ev.data, 2., atol=1e-20)
-    expected_nave = 1. / (1. / ev1.nave + 1. / ev2.nave)
-    assert_allclose(ev.nave, expected_nave)
+    tol = dict(rtol=1e-9, atol=0)
+    # test subtraction
+    sub1 = combine_evoked([ev, ev], weights=[1, -1])
+    sub2 = combine_evoked([ev, -ev], weights=[1, 1])
+    assert np.allclose(sub1.data, np.zeros_like(sub1.data), atol=1e-20)
+    assert np.allclose(sub2.data, np.zeros_like(sub2.data), atol=1e-20)
+    # test nave weighting. Expect signal ampl.: 1*(20/50) + 1*(30/50) == 1
+    # and expect nave == ev1.nave + ev2.nave
+    ev = combine_evoked([ev20, ev30], weights='nave')
+    assert np.allclose(ev.nave, ev20.nave + ev30.nave)
+    assert np.allclose(ev.data, np.ones_like(ev.data), **tol)
+    # test equal-weighted sum. Expect signal ampl. == 2
+    # and expect nave == 1/sum(1/naves) == 1/(1/20 + 1/30) == 12
+    ev = combine_evoked([ev20, ev30], weights=[1, 1])
+    assert np.allclose(ev.nave, 12.)
+    assert np.allclose(ev.data, ev20.data + ev30.data, **tol)
+    # test equal-weighted average. Expect signal ampl. == 1
+    # and expect nave == 1/sum(weights²/naves) == 1/(0.5²/20 + 0.5²/30) == 48
+    ev = combine_evoked([ev20, ev30], weights='equal')
+    assert np.allclose(ev.nave, 48.)
+    assert np.allclose(ev.data, np.mean([ev20.data, ev30.data], axis=0), **tol)
+    # test zero weights
+    ev = combine_evoked([ev20, ev30], weights=[1, 0])
+    assert ev.nave == ev20.nave
+    assert np.allclose(ev.data, ev20.data, **tol)
 
     # default comment behavior if evoked.comment is None
-    old_comment1 = ev1.comment
-    old_comment2 = ev2.comment
-    ev1.comment = None
-    ev = combine_evoked([ev1, -ev2], weights=[1, -1])
+    old_comment1 = ev20.comment
+    ev20.comment = None
+    ev = combine_evoked([ev20, -ev30], weights=[1, -1])
     assert_equal(ev.comment.count('unknown'), 2)
-    assert ('-unknown' in ev.comment)
-    assert (' + ' in ev.comment)
-    ev1.comment = old_comment1
-    ev2.comment = old_comment2
+    assert ev.comment == 'unknown + unknown'
+    ev20.comment = old_comment1
 
-    # equal weighting
-    ev = combine_evoked([ev1, ev2], weights='equal')
-    assert_allclose(ev.data, np.zeros_like(ev1.data))
-
-    # combine_evoked([ev1, ev2], weights=[1, 0]) should yield the same as ev1
-    ev = combine_evoked([ev1, ev2], weights=[1, 0])
-    assert_allclose(ev.nave, ev1.nave)
-    assert_allclose(ev.data, ev1.data)
-
-    # simple subtraction (like in oddball)
-    ev = combine_evoked([ev1, ev2], weights=[1, -1])
-    assert_allclose(ev.data, 2 * np.ones_like(ev1.data))
-
-    pytest.raises(ValueError, combine_evoked, [ev1, ev2], weights='foo')
-    pytest.raises(ValueError, combine_evoked, [ev1, ev2], weights=[1])
+    with pytest.raises(ValueError, match="Invalid value for the 'weights'"):
+        combine_evoked([ev20, ev30], weights='foo')
+    with pytest.raises(ValueError, match='weights must be the same size as'):
+        combine_evoked([ev20, ev30], weights=[1])
 
     # grand average
     evoked1, evoked2 = read_evokeds(fname, condition=[0, 1], proj=True)
@@ -597,8 +603,9 @@ def test_arithmetic():
     assert_equal(gave.data.shape, [len(ch_names), evoked1.data.shape[1]])
     assert_equal(ch_names, gave.ch_names)
     assert_equal(gave.nave, 2)
-    pytest.raises(TypeError, grand_average, [1, evoked1])
-    gave = grand_average([ev1, ev1, ev2])  # (1 + 1 + -1) / 3  =  1/3
+    with pytest.raises(TypeError, match='All elements must be an instance of'):
+        grand_average([1, evoked1])
+    gave = grand_average([ev20, ev20, -ev30])  # (1 + 1 + -1) / 3  =  1/3
     assert_allclose(gave.data, np.full_like(gave.data, 1. / 3.))
 
     # test channel (re)ordering
@@ -608,10 +615,10 @@ def test_arithmetic():
     evoked2.reorder_channels(evoked2.ch_names[::-1])
     assert not np.allclose(data2, evoked2.data)
     with pytest.warns(RuntimeWarning, match='reordering'):
-        ev3 = combine_evoked([evoked1, evoked2], weights=[0.5, 0.5])
-    assert np.allclose(ev3.data, data)
+        evoked3 = combine_evoked([evoked1, evoked2], weights=[0.5, 0.5])
+    assert np.allclose(evoked3.data, data)
     assert evoked1.ch_names != evoked2.ch_names
-    assert evoked1.ch_names == ev3.ch_names
+    assert evoked1.ch_names == evoked3.ch_names
 
 
 def test_array_epochs():
@@ -672,7 +679,7 @@ def test_time_as_index_and_crop():
     assert_allclose(evoked.times[[0, -1]], [tmin, tmax], atol=atol)
     assert_array_equal(evoked.time_as_index([-.1, .1], use_rounding=True),
                        [0, len(evoked.times) - 1])
-    evoked.crop(tmin, tmax, include_tmax=False)
+    evoked.crop(evoked.tmin, evoked.tmax, include_tmax=False)
     assert_allclose(evoked.times[[0, -1]], [tmin, tmax - delta], atol=atol)
 
 
@@ -708,19 +715,61 @@ def test_add_channels():
     pytest.raises(TypeError, evoked_meg.add_channels, evoked_badsf)
 
 
-def test_evoked_baseline():
+def test_evoked_baseline(tmpdir):
     """Test evoked baseline."""
     evoked = read_evokeds(fname, condition=0, baseline=None)
 
     # Here we create a data_set with constant data.
     evoked = EvokedArray(np.ones_like(evoked.data), evoked.info,
                          evoked.times[0])
+    assert evoked.baseline is None
+
+    evoked_baselined = EvokedArray(np.ones_like(evoked.data), evoked.info,
+                                   evoked.times[0], baseline=(None, 0))
+    assert_allclose(evoked_baselined.baseline, (evoked_baselined.tmin, 0))
+    del evoked_baselined
 
     # Mean baseline correction is applied, since the data is equal to its mean
     # the resulting data should be a matrix of zeroes.
-    evoked.apply_baseline((None, None))
-
+    baseline = (None, None)
+    evoked.apply_baseline(baseline)
+    assert_allclose(evoked.baseline, (evoked.tmin, evoked.tmax))
     assert_allclose(evoked.data, np.zeros_like(evoked.data))
+
+    # Test that the .baseline attribute changes if we apply a different
+    # baseline now.
+    baseline = (None, 0)
+    evoked.apply_baseline(baseline)
+    assert_allclose(evoked.baseline, (evoked.tmin, 0))
+
+    # By default for our test file, no baseline should be set upon reading
+    evoked = read_evokeds(fname, condition=0)
+    assert evoked.baseline is None
+
+    # Test that the .baseline attribute is set when we call read_evokeds()
+    # with a `baseline` parameter.
+    baseline = (-0.2, -0.1)
+    evoked = read_evokeds(fname, condition=0, baseline=baseline)
+    assert_allclose(evoked.baseline, baseline)
+
+    # Test that the .baseline attribute survives an I/O roundtrip.
+    evoked = read_evokeds(fname, condition=0)
+    baseline = (-0.2, -0.1)
+    evoked.apply_baseline(baseline)
+    assert_allclose(evoked.baseline, baseline)
+
+    tmp_fname = tmpdir / 'test-ave.fif'
+    evoked.save(tmp_fname)
+    evoked_read = read_evokeds(tmp_fname, condition=0)
+    assert_allclose(evoked_read.baseline, evoked.baseline)
+
+    # We shouldn't be able to remove a baseline correction after it has been
+    # applied.
+    evoked = read_evokeds(fname, condition=0)
+    baseline = (-0.2, -0.1)
+    evoked.apply_baseline(baseline)
+    with pytest.raises(ValueError, match='already been baseline-corrected'):
+        evoked.apply_baseline(None)
 
 
 def test_hilbert():
@@ -749,4 +798,19 @@ def test_hilbert():
     assert_allclose(evoked_hilb_env.data, np.abs(evoked_hilb.data))
 
 
-run_tests_if_main()
+def test_apply_function_evk():
+    """Check the apply_function method for evoked data."""
+    # create fake evoked data to use for checking apply_function
+    data = np.random.rand(10, 1000)
+    info = create_info(10, 1000., 'eeg')
+    evoked = EvokedArray(data, info)
+    evoked_data = evoked.data.copy()
+    # check apply_function channel-wise
+
+    def fun(data, multiplier):
+        return data * multiplier
+
+    mult = -1
+    applied = evoked.apply_function(fun, n_jobs=1, multiplier=mult)
+    assert np.shape(applied.data) == np.shape(evoked_data)
+    assert np.equal(applied.data, evoked_data * mult).all()

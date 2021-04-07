@@ -11,10 +11,6 @@ including how to load, query, subselect, export, and plot data from an
 object from (possibly simulated) data in a :class:`NumPy array
 <numpy.ndarray>`, see :ref:`tut_creating_data_structures`.
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 As usual we'll start by importing the modules we need:
 """
 
@@ -49,6 +45,19 @@ evoked = epochs['auditory/left'].average()
 del raw  # reduce memory usage
 
 ###############################################################################
+# You may have noticed that MNE informed us that "baseline correction" has been
+# applied. This happened automatically by during creation of the
+# `~mne.Epochs` object, but may also be initiated (or disabled!) manually:
+# We will discuss this in more detail later.
+#
+# The information about the baseline period of `~mne.Epochs` is transferred to
+# derived `~mne.Evoked` objects to maintain provenance as you process your
+# data:
+
+print(f'Epochs baseline: {epochs.baseline}')
+print(f'Evoked baseline: {evoked.baseline}')
+
+###############################################################################
 # Basic visualization of ``Evoked`` objects
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
@@ -63,7 +72,7 @@ evoked.plot()
 # :meth:`Epochs <mne.Epochs.plot>` objects,
 # :meth:`evoked.plot() <mne.Evoked.plot>` has many parameters for customizing
 # the plot output, such as color-coding channel traces by scalp location, or
-# plotting the :term:`global field power <GFP>` alongside the channel traces.
+# plotting the :term:`global field power` alongside the channel traces.
 # See :ref:`tut-visualize-evoked` for more information about visualizing
 # :class:`~mne.Evoked` objects.
 #
@@ -207,7 +216,7 @@ print(type(right_vis))
 ###############################################################################
 # Above, when we created an :class:`~mne.Evoked` object by averaging epochs,
 # baseline correction was applied by default when we extracted epochs from the
-# class:`~mne.io.Raw` object (the default baseline period is ``(None, 0)``,
+# `~mne.io.Raw` object (the default baseline period is ``(None, 0)``,
 # which assured zero mean for times before the stimulus event). In contrast, if
 # we plot the first :class:`~mne.Evoked` object in the list that was loaded
 # from disk, we'll see that the data have not been baseline-corrected:
@@ -219,7 +228,14 @@ evokeds_list[0].plot(picks='eeg')
 # :func:`mne.read_evokeds`, or by applying baseline correction after loading,
 # as shown here:
 
+# Original baseline (none set).
+print(f'Baseline after loading: {evokeds_list[0].baseline}')
+
+# Apply a custom baseline correction.
 evokeds_list[0].apply_baseline((None, 0))
+print(f'Baseline after calling apply_baseline(): {evokeds_list[0].baseline}')
+
+# Visualize the evoked response.
 evokeds_list[0].plot(picks='eeg')
 
 ###############################################################################
@@ -262,23 +278,27 @@ print([evok.nave for evok in (left_aud, right_aud)])
 # This can be accomplished by the function :func:`mne.combine_evoked`, which
 # computes a weighted sum of the :class:`~mne.Evoked` objects given to it. The
 # weights can be manually specified as a list or array of float values, or can
-# be specified using the keyword ``'equal'`` (weight each :class:`~mne.Evoked`
-# object by :math:`\frac{1}{N}`, where :math:`N` is the number of
-# :class:`~mne.Evoked` objects given) or the keyword ``'nave'`` (weight each
-# :class:`~mne.Evoked` object by the number of epochs that were averaged
-# together to create it):
+# be specified using the keyword ``'equal'`` (weight each `~mne.Evoked` object
+# by :math:`\frac{1}{N}`, where :math:`N` is the number of `~mne.Evoked`
+# objects given) or the keyword ``'nave'`` (weight each `~mne.Evoked` object
+# proportional to the number of epochs averaged together to create it):
 
 left_right_aud = mne.combine_evoked([left_aud, right_aud], weights='nave')
 assert left_right_aud.nave == left_aud.nave + right_aud.nave
 
 ###############################################################################
-# Keeping track of ``nave`` is important for inverse imaging, because it is
-# used to scale the noise covariance estimate (which in turn affects the
-# magnitude of estimated source activity). See :ref:`minimum_norm_estimates`
-# for more information (especially the :ref:`whitening_and_scaling` section).
-# For this reason, combining :class:`~mne.Evoked` objects with either
-# ``weights='equal'`` or by providing custom numeric weights **should usually
-# not be done** if you intend to perform inverse imaging on the resulting
+# Note that the ``nave`` attribute of the resulting `~mne.Evoked` object will
+# reflect the *effective* number of averages, and depends on both the ``nave``
+# attributes of the contributing `~mne.Evoked` objects and the weights at
+# which they are combined. Keeping track of effective ``nave`` is important for
+# inverse imaging, because ``nave`` is used to scale the noise covariance
+# estimate (which in turn affects the magnitude of estimated source activity).
+# See :ref:`minimum_norm_estimates` for more information (especially the
+# :ref:`whitening_and_scaling` section). Note that `mne.grand_average` does
+# *not* adjust ``nave`` to reflect effective number of averaged epochs; rather
+# it simply sets ``nave`` to the number of *evokeds* that were averaged
+# together. For this reason, it is best to use `mne.combine_evoked` rather than
+# `mne.grand_average` if you intend to perform inverse imaging on the resulting
 # :class:`~mne.Evoked` object.
 #
 #

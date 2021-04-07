@@ -9,8 +9,8 @@ exploratory and confirmatory tests - e.g., targeted t-tests, cluster-based
 permutation approaches (here with Threshold-Free Cluster Enhancement);
 and how to visualise the results.
 
-The underlying data comes from [1]_; we contrast long vs. short words.
-TFCE is described in [2]_.
+The underlying data comes from :footcite:`DufauEtAl2015`; we contrast long vs.
+short words. TFCE is described in :footcite:`SmithNichols2009`.
 """
 
 import numpy as np
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import ttest_ind
 
 import mne
-from mne.channels import find_ch_connectivity, make_1020_channel_selections
+from mne.channels import find_ch_adjacency, make_1020_channel_selections
 from mne.stats import spatio_temporal_cluster_test
 
 np.random.seed(0)
@@ -75,8 +75,8 @@ for (tmin, tmax) in time_windows:
 # methods allow deriving power from the spatio-temoral correlation structure
 # of the data. Here, we use TFCE.
 
-# Calculate statistical thresholds
-con = find_ch_connectivity(epochs.info, "eeg")
+# Calculate adjacency matrix between sensors from their locations
+adjacency, _ = find_ch_adjacency(epochs.info, "eeg")
 
 # Extract data: transpose because the cluster test requires channels to be last
 # In this case, inference is done over items. In the same manner, we could
@@ -85,8 +85,10 @@ X = [long_words.get_data().transpose(0, 2, 1),
      short_words.get_data().transpose(0, 2, 1)]
 tfce = dict(start=.2, step=.2)
 
+# Calculate statistical thresholds
 t_obs, clusters, cluster_pv, h0 = spatio_temporal_cluster_test(
-    X, tfce, n_permutations=100)  # a more standard number would be 1000+
+    X, tfce, adjacency=adjacency,
+    n_permutations=100)  # a more standard number would be 1000+
 significant_points = cluster_pv.reshape(t_obs.shape).T < .05
 print(str(significant_points.sum()) + " points selected by TFCE ...")
 
@@ -98,8 +100,8 @@ print(str(significant_points.sum()) + " points selected by TFCE ...")
 # effects on the head.
 
 # We need an evoked object to plot the image to be masked
-evoked = mne.combine_evoked([long_words.average(), -short_words.average()],
-                            weights='equal')  # calculate difference wave
+evoked = mne.combine_evoked([long_words.average(), short_words.average()],
+                            weights=[1, -1])  # calculate difference wave
 time_unit = dict(time_unit="s")
 evoked.plot_joint(title="Long vs. short words", ts_args=time_unit,
                   topomap_args=time_unit)  # show difference wave
@@ -121,9 +123,4 @@ plt.show()
 ###############################################################################
 # References
 # ----------
-# .. [1] Dufau, S., Grainger, J., Midgley, KJ., Holcomb, PJ. A thousand
-#    words are worth a picture: Snapshots of printed-word processing in an
-#    event-related potential megastudy. Psychological Science, 2015
-# .. [2] Smith and Nichols 2009, "Threshold-free cluster enhancement:
-#    addressing problems of smoothing, threshold dependence, and
-#    localisation in cluster inference", NeuroImage 44 (2009) 83-98.
+# .. footbibliography::

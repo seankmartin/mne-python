@@ -32,7 +32,7 @@ def permutation_t_test(X, n_permutations=10000, tail=0, n_jobs=1,
     adjusts p-values in a way that controls the family-wise error rate.
     However, the permutation method will be more
     powerful than Bonferroni correction when different variables in the test
-    are correlated (see [1]_).
+    are correlated (see :footcite:`NicholsHolmes2002`).
 
     Parameters
     ----------
@@ -71,9 +71,7 @@ def permutation_t_test(X, n_permutations=10000, tail=0, n_jobs=1,
 
     References
     ----------
-    .. [1] Nichols, T. E. & Holmes, A. P. (2002). Nonparametric permutation
-       tests for functional neuroimaging: a primer with examples.
-       Human Brain Mapping, 15, 1-25.
+    .. footbibliography::
     """
     from .cluster_level import _get_1samp_orders
     n_samples, n_tests = X.shape
@@ -113,15 +111,15 @@ def bootstrap_confidence_interval(arr, ci=.95, n_bootstraps=2000,
     n_bootstraps : int
         Number of bootstraps.
     stat_fun : str | callable
-        Can be "mean", "median", or a callable operating along `axis=0`.
+        Can be "mean", "median", or a callable operating along ``axis=0``.
     random_state : int | float | array_like | None
         The seed at which to initialize the bootstrap.
 
     Returns
     -------
     cis : ndarray, shape (2, ...)
-        Containing the lower boundary of the CI at `cis[0, ...]` and the upper
-        boundary of the CI at `cis[1, ...]`.
+        Containing the lower boundary of the CI at ``cis[0, ...]`` and the
+        upper boundary of the CI at ``cis[1, ...]``.
     """
     if stat_fun == "mean":
         def stat_fun(x):

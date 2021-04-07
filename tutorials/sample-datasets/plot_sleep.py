@@ -5,23 +5,21 @@
 Sleep stage classification from polysomnography (PSG) data
 ==========================================================
 
-.. note:: This code is taken from the analysis code used in [3]_. If you reuse
-          this code please consider citing this work.
+.. note:: This code is taken from the analysis code used in
+          :footcite:`ChambonEtAl2018`. If you reuse this code please consider
+          citing this work.
 
 This tutorial explains how to perform a toy polysomnography analysis that
 answers the following question:
 
-.. important:: Given two subjects from the Sleep Physionet dataset [1]_ [2]_,
-               namely *Alice* and *Bob*, how well can we predict the sleep
-               stages of *Bob* from *Alice's* data?
+.. important:: Given two subjects from the Sleep Physionet dataset
+               :footcite:`KempEtAl2000,GoldbergerEtAl2000`, namely
+               *Alice* and *Bob*, how well can we predict the sleep stages of
+               *Bob* from *Alice's* data?
 
 This problem is tackled as supervised multiclass classification task. The aim
 is to predict the sleep stage from 5 possible stages for each chunk of 30
 seconds of data.
-
-.. contents:: This tutorial covers:
-   :local:
-   :depth: 2
 
 .. _Pipeline: https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html
 .. _FunctionTransformer: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.FunctionTransformer.html
@@ -57,7 +55,8 @@ from sklearn.preprocessing import FunctionTransformer
 #
 # MNE-Python provides us with
 # :func:`mne.datasets.sleep_physionet.age.fetch_data` to conveniently download
-# data from the Sleep Physionet dataset [1]_ [2]_.
+# data from the Sleep Physionet dataset
+# :footcite:`KempEtAl2000,GoldbergerEtAl2000`.
 # Given a list of subjects and records, the fetcher downloads the data and
 # provides us for each subject, a pair of files:
 #
@@ -78,8 +77,8 @@ ALICE, BOB = 0, 1
 [alice_files, bob_files] = fetch_data(subjects=[ALICE, BOB], recording=[1])
 
 mapping = {'EOG horizontal': 'eog',
-           'Resp oro-nasal': 'misc',
-           'EMG submental': 'misc',
+           'Resp oro-nasal': 'resp',
+           'EMG submental': 'emg',
            'Temp rectal': 'misc',
            'Event marker': 'misc'}
 
@@ -90,13 +89,18 @@ raw_train.set_annotations(annot_train, emit_warning=False)
 raw_train.set_channel_types(mapping)
 
 # plot some data
-raw_train.plot(duration=60, scalings='auto')
+# scalings were chosen manually to allow for simultaneous visualization of
+# different channel types in this specific dataset
+raw_train.plot(start=60, duration=60,
+               scalings=dict(eeg=1e-4, resp=1e3, eog=1e-4, emg=1e-7,
+                             misc=1e-1))
 
 ##############################################################################
 # Extract 30s events from annotations
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
-# The Sleep Physionet dataset is annotated using `8 labels <physionet_labels>`:
+# The Sleep Physionet dataset is annotated using
+# `8 labels <physionet_labels_>`_:
 # Wake (W), Stage 1, Stage 2, Stage 3, Stage 4 corresponding to the range from
 # light sleep to deep sleep, REM sleep (R) where REM is the abbreviation for
 # Rapid Eye Movement sleep, movement (M), and Stage (?) for any none scored
@@ -106,6 +110,11 @@ raw_train.plot(duration=60, scalings='auto')
 # REM sleep (R). To do so, we use the ``event_id`` parameter in
 # :func:`mne.events_from_annotations` to select which events are we
 # interested in and we associate an event identifier to each of them.
+#
+# Moreover, the recordings contain long awake (W) regions before and after each
+# night. To limit the impact of class imbalance, we trim each recording by only
+# keeping 30 minutes of wake time before the first occurrence and 30 minutes
+# after the last occurrence of sleep stages.
 
 annotation_desc_2_event_id = {'Sleep stage W': 1,
                               'Sleep stage 1': 2,
@@ -113,6 +122,12 @@ annotation_desc_2_event_id = {'Sleep stage W': 1,
                               'Sleep stage 3': 4,
                               'Sleep stage 4': 4,
                               'Sleep stage R': 5}
+
+# keep last 30-min wake events before sleep and first 30-min wake events after
+# sleep and redefine annotations on raw data
+annot_train.crop(annot_train[1]['onset'] - 30 * 60,
+                 annot_train[-2]['onset'] + 30 * 60)
+raw_train.set_annotations(annot_train, emit_warning=False)
 
 events_train, _ = mne.events_from_annotations(
     raw_train, event_id=annotation_desc_2_event_id, chunk_duration=30.)
@@ -125,8 +140,9 @@ event_id = {'Sleep stage W': 1,
             'Sleep stage R': 5}
 
 # plot events
-mne.viz.plot_events(events_train, event_id=event_id,
-                    sfreq=raw_train.info['sfreq'])
+fig = mne.viz.plot_events(events_train, event_id=event_id,
+                          sfreq=raw_train.info['sfreq'],
+                          first_samp=events_train[0, 0])
 
 # keep the color-code for further plotting
 stage_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -148,6 +164,8 @@ print(epochs_train)
 
 raw_test = mne.io.read_raw_edf(bob_files[0])
 annot_test = mne.read_annotations(bob_files[1])
+annot_test.crop(annot_test[1]['onset'] - 30 * 60,
+                annot_test[-2]['onset'] + 30 * 60)
 raw_test.set_annotations(annot_test, emit_warning=False)
 raw_test.set_channel_types(mapping)
 events_test, _ = mne.events_from_annotations(
@@ -246,7 +264,7 @@ def eeg_power_band(epochs):
 # and a final estimator, while the FunctionTransformer converts a python
 # function in an estimator compatible object. In this manner we can create
 # scikit-learn estimator that takes :class:`mne.Epochs` thanks to
-# `eeg_power_band` function we just created.
+# ``eeg_power_band`` function we just created.
 
 pipe = make_pipeline(FunctionTransformer(eeg_power_band, validate=False),
                      RandomForestClassifier(n_estimators=100, random_state=42))
@@ -288,20 +306,4 @@ print(classification_report(y_test, y_pred, target_names=event_id.keys()))
 #
 # References
 # ----------
-#
-# .. [1] B Kemp, AH Zwinderman, B Tuk, HAC Kamphuisen, JJL Oberyé. Analysis of
-#        a sleep-dependent neuronal feedback loop: the slow-wave
-#        microcontinuity of the EEG. IEEE-BME 47(9):1185-1194 (2000).
-#
-# .. [2] Goldberger AL, Amaral LAN, Glass L, Hausdorff JM, Ivanov PCh,
-#        Mark RG, Mietus JE, Moody GB, Peng C-K, Stanley HE. (2000)
-#        PhysioBank, PhysioToolkit, and PhysioNet: Components of a New
-#        Research Resource for Complex Physiologic Signals.
-#        Circulation 101(23):e215-e220
-#
-# .. [3] Chambon, S., Galtier, M., Arnal, P., Wainrib, G. and Gramfort, A.
-#       (2018)A Deep Learning Architecture for Temporal Sleep Stage
-#       Classification Using Multivariate and Multimodal Time Series.
-#       IEEE Trans. on Neural Systems and Rehabilitation Engineering 26:
-#       (758-769).
-#
+# .. footbibliography::

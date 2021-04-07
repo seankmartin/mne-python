@@ -7,16 +7,13 @@ Brainstorm CTF phantom dataset tutorial
 =======================================
 
 Here we compute the evoked from raw for the Brainstorm CTF phantom
-tutorial dataset. For comparison, see [1]_ and:
+tutorial dataset. For comparison, see :footcite:`TadelEtAl2011` and:
 
     https://neuroimage.usc.edu/brainstorm/Tutorials/PhantomCtf
 
 References
 ----------
-.. [1] Tadel F, Baillet S, Mosher JC, Pantazis D, Leahy RM.
-       Brainstorm: A User-Friendly Application for MEG/EEG Analysis.
-       Computational Intelligence and Neuroscience, vol. 2011, Article ID
-       879716, 13 pages, 2011. doi:10.1155/2011/879716
+.. footbibliography::
 """
 
 # Authors: Eric Larson <larson.eric.d@gmail.com>
@@ -94,7 +91,7 @@ evoked.crop(0., 0.)
 #
 # Let's use a :ref:`sphere head geometry model <eeg_sphere_model>`
 # and let's see the coordinate alignment and the sphere location.
-sphere = mne.make_sphere_model(r0=(0., 0., 0.), head_radius=None)
+sphere = mne.make_sphere_model(r0=(0., 0., 0.), head_radius=0.08)
 
 mne.viz.plot_alignment(raw.info, subject='sample',
                        meg='helmet', bem=sphere, dig=True,

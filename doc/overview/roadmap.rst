@@ -1,5 +1,3 @@
-.. _roadmap:
-
 Roadmap
 =======
 
@@ -7,11 +5,6 @@ This page describes some of the major medium- to long-term goals for
 MNE-Python. These are goals that require substantial effort and/or
 API design considerations. Some of these may be suitable for Google Summer of
 Code projects, while others require more extensive work.
-
-.. contents:: Page contents
-   :local:
-   :depth: 1
-
 
 Clustering statistics API
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -132,7 +125,7 @@ to go. Relevant tracking issues can be found under the tag :gh:`labels/DOC`.
 Coregistration / 3D viewer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-:ref:`gen_mne_coreg` is an excellent tool for coregistration, but is limited
+:ref:`mne coreg` is an excellent tool for coregistration, but is limited
 by being tied to Mayavi, Traits, and TraitsUI. We should first refactor in
 several (mostly) separable steps:
 
@@ -172,7 +165,7 @@ as well as:
     task MEG data.
 - `MMN dataset <http://www.fil.ion.ucl.ac.uk/spm/data/eeg_mmn>`__
     Used for tutorial/publications applying DCM for ERP analysis using SPM.
-- `Kymata Datasets <https://kymata-atlas.org/datasets>`__
+- Kymata datasets
     Current and archived EMEG measurement data, used to test hypotheses in the
     Kymata atlas. The participants are healthy human adults listening to the
     radio and/or watching films, and the data is comprised of (averaged) EEG
@@ -202,4 +195,4 @@ recordings, etc.). Some software tasks that shall be completed:
   integration points etc.) and allow OpenMEEG to be used.
 - Help package OpenMEEG for Debian/Ubuntu
 - Help manage `the continuous integration system
-  <https://ci.inria.fr/openmeeg/>`__
+  <https://ci.inria.fr/>`__

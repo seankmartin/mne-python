@@ -3,10 +3,6 @@
 The minimum-norm current estimates
 ==================================
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 .. NOTE: part of this file is included in doc/overview/implementation.rst.
    Changes here are reflected there. If you want to link to this content, link
    to :ref:`ch_mne` to link to that section of the implementation.rst page.
@@ -119,7 +115,7 @@ where
 
 is the spatially whitened gain matrix. We arrive at the whitened inverse
 operator equation :eq:`inv_m_tilde` by making the substitution for
-`G` from :eq:`inv_g_tilde` in :eq:`inv_m` as
+:math:`G` from :eq:`inv_g_tilde` in :eq:`inv_m` as
 
 .. math::
 
@@ -606,8 +602,3 @@ Generalizing, for any combination of sums and differences, where :math:`w_i =
 .. math::    1 / L_{eff} = \sum_{i = 1}^n {1/{L_i}}
 
 .. target for :end-before: inverse-end-content
-
-References
-~~~~~~~~~~
-
-.. footbibliography::

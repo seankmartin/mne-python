@@ -146,9 +146,9 @@ X = X[:, :, :, 0] - X[:, :, :, 1]  # make paired contrast
 # -----------------
 #
 # To use an algorithm optimized for spatio-temporal clustering, we
-# just pass the spatial connectivity matrix (instead of spatio-temporal)
-print('Computing connectivity.')
-connectivity = mne.spatial_src_connectivity(src)
+# just pass the spatial adjacency matrix (instead of spatio-temporal)
+print('Computing adjacency.')
+adjacency = mne.spatial_src_adjacency(src)
 
 #    Note that X needs to be a multi-dimensional array of shape
 #    samples (subjects) x time x space, so we permute dimensions
@@ -160,7 +160,7 @@ p_threshold = 0.001
 t_threshold = -stats.distributions.t.ppf(p_threshold / 2., n_subjects - 1)
 print('Clustering.')
 T_obs, clusters, cluster_p_values, H0 = clu = \
-    spatio_temporal_cluster_1samp_test(X, connectivity=connectivity, n_jobs=1,
+    spatio_temporal_cluster_1samp_test(X, adjacency=adjacency, n_jobs=1,
                                        threshold=t_threshold, buffer_size=None,
                                        verbose=True)
 #    Now select the clusters that are sig. at p < 0.05 (note that this value
@@ -179,7 +179,7 @@ stc_all_cluster_vis = summarize_clusters_stc(clu, tstep=tstep,
                                              subject='fsaverage')
 
 #    Let's actually plot the first "time point" in the SourceEstimate, which
-#    shows all the clusters, weighted by duration
+#    shows all the clusters, weighted by duration.
 subjects_dir = op.join(data_path, 'subjects')
 # blue blobs are for condition A < condition B, red for A > B
 brain = stc_all_cluster_vis.plot(

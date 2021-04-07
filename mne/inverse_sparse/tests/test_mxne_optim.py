@@ -139,7 +139,7 @@ def test_norm_epsilon():
     n_steps = np.ceil(n_times / tstep.astype(float)).astype(int)
     n_freqs = wsize // 2 + 1
     n_coefs = n_steps * n_freqs
-    phi = _Phi(wsize, tstep, n_coefs)
+    phi = _Phi(wsize, tstep, n_coefs, n_times)
 
     Y = np.zeros(n_steps * n_freqs)
     l1_ratio = 0.03
@@ -186,7 +186,7 @@ def test_dgapl21l1():
     n_steps = np.ceil(n_times / tstep.astype(float)).astype(int)
     n_freqs = wsize // 2 + 1
     n_coefs = n_steps * n_freqs
-    phi = _Phi(wsize, tstep, n_coefs)
+    phi = _Phi(wsize, tstep, n_coefs, n_times)
     phiT = _PhiT(tstep, n_freqs, n_steps, n_times)
 
     for l1_ratio in [0.05, 0.1]:
@@ -309,6 +309,7 @@ def test_iterative_reweighted_mxne():
     assert_array_equal(X_hat_bcd, X_hat_cd, 5)
 
 
+@pytest.mark.slowtest
 def test_iterative_reweighted_tfmxne():
     """Test convergence of irTF-MxNE solver."""
     M, G, true_active_set = _generate_tf_data()

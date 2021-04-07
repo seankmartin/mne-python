@@ -31,7 +31,7 @@ raw_fname = data_path + '/MEG/sample/sample_audvis_filt-0-40_raw.fif'
 
 raw = mne.io.read_raw_fif(raw_fname, preload=True)
 
-picks = mne.pick_types(raw.info)
+picks = mne.pick_types(raw.info, meg=True)
 reject = dict(mag=5e-12, grad=4000e-13)
 raw.filter(1, 30, fir_design='firwin')
 
@@ -42,7 +42,7 @@ raw.filter(1, 30, fir_design='firwin')
 
 def run_ica(method, fit_params=None):
     ica = ICA(n_components=20, method=method, fit_params=fit_params,
-              random_state=0)
+              max_iter='auto', random_state=0)
     t0 = time()
     ica.fit(raw, picks=picks, reject=reject)
     fit_time = time() - t0

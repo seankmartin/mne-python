@@ -7,10 +7,6 @@ Setting the EEG reference
 
 This tutorial describes how to set or change the EEG reference in MNE-Python.
 
-.. contents:: Page contents
-   :local:
-   :depth: 2
-
 As usual we'll start by importing the modules we need, loading some
 :ref:`example data <sample-dataset>`, and cropping it to save memory. Since
 this tutorial deals specifically with EEG, we'll also restrict the dataset to
@@ -79,6 +75,9 @@ raw.pick(['EEG 0{:02}'.format(n) for n in range(41, 60)])
 
 # use average of mastoid channels as reference
 # raw.set_eeg_reference(ref_channels=['M1', 'M2'])
+
+# use a bipolar reference (contralateral)
+# raw.set_bipolar_reference(anode='[F3'], cathode=['F4'])
 
 ###############################################################################
 # If a scalp electrode was used as reference but was not saved alongside the
@@ -171,6 +170,47 @@ for title, proj in zip(['Original', 'Average'], [False, True]):
     fig.suptitle('{} reference'.format(title), size='xx-large', weight='bold')
 
 ###############################################################################
+# Using an infinite reference (REST)
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#
+# To use the "point at infinity" reference technique described in
+# :footcite:`Yao2001` requires a forward model, which we can create in a few
+# steps. Here we use a fairly large spacing of vertices (``pos`` = 15 mm) to
+# reduce computation time; a 5 mm spacing is more typical for real data
+# analysis:
+
+raw.del_proj()  # remove our average reference projector first
+sphere = mne.make_sphere_model('auto', 'auto', raw.info)
+src = mne.setup_volume_source_space(sphere=sphere, exclude=30., pos=15.)
+forward = mne.make_forward_solution(raw.info, trans=None, src=src, bem=sphere)
+raw_rest = raw.copy().set_eeg_reference('REST', forward=forward)
+
+for title, _raw in zip(['Original', 'REST (∞)'], [raw, raw_rest]):
+    fig = _raw.plot(n_channels=len(raw), scalings=dict(eeg=5e-5))
+    # make room for title
+    fig.subplots_adjust(top=0.9)
+    fig.suptitle('{} reference'.format(title), size='xx-large', weight='bold')
+
+###############################################################################
+# Using a bipolar reference
+# ^^^^^^^^^^^^^^^^^^^^^^^^^
+#
+# To create a bipolar reference, you can use :meth:`~mne.set_bipolar_reference`
+# along with the respective channel names for ``anode`` and ``cathode`` which
+# creates a new virtual channel that takes the difference between two
+# specified channels (anode and cathode) and drops the original channels by
+# default. The new virtual channel will be annotated with the channel info of
+# the anode with location set to ``(0, 0, 0)`` and coil type set to
+# ``EEG_BIPOLAR`` by default. Here we use a contralateral/transverse bipolar
+# reference between channels ``EEG 054`` and ``EEG 055`` as described in
+# :footcite:`YaoEtAl2019` which creates a new virtual channel
+# named ``EEG 054-EEG 055``.
+
+raw_bip_ref = mne.set_bipolar_reference(raw, anode=['EEG 054'],
+                                        cathode=['EEG 055'])
+raw_bip_ref.plot()
+
+###############################################################################
 # EEG reference and source modeling
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
@@ -202,3 +242,8 @@ for title, proj in zip(['Original', 'Average'], [False, True]):
 #    http://www.fieldtriptoolbox.org/faq/why_should_i_use_an_average_reference_for_eeg_source_reconstruction/
 # .. _`10-20 electrode naming system`:
 #    https://en.wikipedia.org/wiki/10%E2%80%9320_system_(EEG)
+#
+#
+# References
+# ^^^^^^^^^^
+# .. footbibliography::

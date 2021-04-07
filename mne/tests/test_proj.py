@@ -20,7 +20,7 @@ from mne.preprocessing import maxwell_filter
 from mne.proj import (read_proj, write_proj, make_eeg_average_ref_proj,
                       _has_eeg_average_ref_proj)
 from mne.rank import _compute_rank_int
-from mne.utils import _TempDir, run_tests_if_main
+from mne.utils import run_tests_if_main
 
 base_dir = op.join(op.dirname(__file__), '..', 'io', 'tests', 'data')
 raw_fname = op.join(base_dir, 'test_raw.fif')
@@ -144,9 +144,9 @@ def test_sensitivity_maps():
     sensitivity_map(fwd)
 
 
-def test_compute_proj_epochs():
+def test_compute_proj_epochs(tmpdir):
     """Test SSP computation on epochs."""
-    tempdir = _TempDir()
+    tempdir = str(tmpdir)
     event_id, tmin, tmax = 1, -0.2, 0.3
 
     raw = read_raw_fif(raw_fname, preload=True)
@@ -175,7 +175,7 @@ def test_compute_proj_epochs():
             p2_data = p2['data']['data'] * np.sign(p2['data']['data'][0, 0])
             if bad_ch in p1['data']['col_names']:
                 bad = p1['data']['col_names'].index('MEG 2443')
-                mask = np.ones(p1_data.size, dtype=np.bool)
+                mask = np.ones(p1_data.size, dtype=bool)
                 mask[bad] = False
                 p1_data = p1_data[:, mask]
                 p2_data = p2_data[:, mask]
@@ -218,11 +218,18 @@ def test_compute_proj_epochs():
     with pytest.warns(RuntimeWarning, match='-proj.fif'):
         read_proj(proj_badname)
 
+    # bad inputs
+    fname = op.join(tempdir, 'out-proj.fif')
+    with pytest.raises(TypeError, match='projs'):
+        write_proj(fname, 'foo')
+    with pytest.raises(TypeError, match=r'projs\[0\] must be .*'):
+        write_proj(fname, ['foo'])
+
 
 @pytest.mark.slowtest
-def test_compute_proj_raw():
+def test_compute_proj_raw(tmpdir):
     """Test SSP computation on raw."""
-    tempdir = _TempDir()
+    tempdir = str(tmpdir)
     # Test that the raw projectors work
     raw_time = 2.5  # Do shorter amount for speed
     raw = read_raw_fif(raw_fname).crop(0, raw_time)
@@ -374,10 +381,8 @@ def test_needs_eeg_average_ref_proj():
 def test_sss_proj():
     """Test `meg` proj option."""
     raw = read_raw_fif(raw_fname)
-    raw.crop(0, 1.0).load_data().pick_types(exclude=())
+    raw.crop(0, 1.0).load_data().pick_types(meg=True, exclude=())
     raw.pick_channels(raw.ch_names[:51]).del_proj()
-    with pytest.raises(ValueError, match='can only be used with Maxfiltered'):
-        compute_proj_raw(raw, meg='combined')
     raw_sss = maxwell_filter(raw, int_order=5, ext_order=2)
     sss_rank = 21  # really low due to channel picking
     assert len(raw_sss.info['projs']) == 0

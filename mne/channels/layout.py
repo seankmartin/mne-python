@@ -17,11 +17,11 @@ import os.path as op
 import numpy as np
 
 from ..transforms import _pol_to_cart, _cart_to_sph
-from ..io.pick import pick_types, _picks_to_idx
+from ..io.pick import pick_types, _picks_to_idx, _FNIRS_CH_TYPES_SPLIT
 from ..io.constants import FIFF
 from ..io.meas_info import Info
 from ..utils import (_clean_names, warn, _check_ch_locs, fill_doc,
-                     _check_option, _check_sphere)
+                     _check_option, _check_sphere, logger)
 from .channels import _get_ch_info
 
 
@@ -36,7 +36,8 @@ class Layout(object):
     box : tuple of length 4
         The box dimension (x_min, x_max, y_min, y_max).
     pos : array, shape=(n_channels, 4)
-        The positions of the channels in 2d (x, y, width, height).
+        The unit-normalized positions of the channels in 2d
+        (x, y, width, height).
     names : list
         The channel names.
     ids : list
@@ -91,12 +92,14 @@ class Layout(object):
                                                      ', '.join(self.names[:3]))
 
     @fill_doc
-    def plot(self, picks=None, show=True):
+    def plot(self, picks=None, show_axes=False, show=True):
         """Plot the sensor positions.
 
         Parameters
         ----------
         %(picks_nostr)s
+        show_axes : bool
+            Show layout axes if True. Defaults to False.
         show : bool
             Show figure if True. Defaults to True.
 
@@ -110,7 +113,7 @@ class Layout(object):
         .. versionadded:: 0.12.0
         """
         from ..viz.topomap import plot_layout
-        return plot_layout(self, picks=picks, show=show)
+        return plot_layout(self, picks=picks, show_axes=show_axes, show=show)
 
 
 def _read_lout(fname):
@@ -126,7 +129,7 @@ def _read_lout(fname):
                 name = chkind + ' ' + nb
             else:
                 cid, x, y, dx, dy, name = splits
-            pos.append(np.array([x, y, dx, dy], dtype=np.float))
+            pos.append(np.array([x, y, dx, dy], dtype=np.float64))
             names.append(name)
             ids.append(int(cid))
 
@@ -147,7 +150,7 @@ def _read_lay(fname):
                 name = chkind + ' ' + nb
             else:
                 cid, x, y, dx, dy, name = splits
-            pos.append(np.array([x, y, dx, dy], dtype=np.float))
+            pos.append(np.array([x, y, dx, dy], dtype=np.float64))
             names.append(name)
             ids.append(int(cid))
 
@@ -214,7 +217,8 @@ def read_layout(kind, path=None, scale=True):
     return Layout(box=box, pos=pos, names=names, kind=kind, ids=ids)
 
 
-def make_eeg_layout(info, radius=0.5, width=None, height=None, exclude='bads'):
+def make_eeg_layout(info, radius=0.5, width=None, height=None, exclude='bads',
+                    csd=False):
     """Create .lout file from EEG electrode digitization.
 
     Parameters
@@ -232,6 +236,8 @@ def make_eeg_layout(info, radius=0.5, width=None, height=None, exclude='bads'):
     exclude : list of str | str
         List of channels to exclude. If empty do not exclude any.
         If 'bads', exclude channels in info['bads'] (default).
+    csd : bool
+        Whether the channels contain current-source-density-transformed data.
 
     Returns
     -------
@@ -249,8 +255,10 @@ def make_eeg_layout(info, radius=0.5, width=None, height=None, exclude='bads'):
     if height is not None and not (0 <= height <= 1.0):
         raise ValueError('The height parameter should be between 0 and 1.')
 
-    picks = pick_types(info, meg=False, eeg=True, ref_meg=False,
-                       exclude=exclude)
+    pick_kwargs = dict(meg=False, eeg=True, ref_meg=False, exclude=exclude)
+    if csd:
+        pick_kwargs.update(csd=True, eeg=False)
+    picks = pick_types(info, **pick_kwargs)
     loc2d = _find_topomap_coords(info, picks)
     names = [info['chs'][i]['ch_name'] for i in picks]
 
@@ -372,7 +380,7 @@ def find_layout(info, ch_type=None, exclude='bads'):
     ch_type : {'mag', 'grad', 'meg', 'eeg'} | None
         The channel type for selecting single channel layouts.
         Defaults to None. Note, this argument will only be considered for
-        VectorView type layout. Use `meg` to force using the full layout
+        VectorView type layout. Use ``'meg'`` to force using the full layout
         in situations where the info does only contain one sensor type.
     exclude : list of str | str
         List of channels to exclude. If empty do not exclude any.
@@ -383,12 +391,13 @@ def find_layout(info, ch_type=None, exclude='bads'):
     layout : Layout instance | None
         None if layout not found.
     """
-    _check_option('ch_type', ch_type, [None, 'mag', 'grad', 'meg', 'eeg'])
+    _check_option('ch_type', ch_type, [None, 'mag', 'grad', 'meg', 'eeg',
+                                       'csd'])
 
     (has_vv_mag, has_vv_grad, is_old_vv, has_4D_mag, ctf_other_types,
      has_CTF_grad, n_kit_grads, has_any_meg, has_eeg_coils,
      has_eeg_coils_and_meg, has_eeg_coils_only,
-     has_neuromag_122_grad) = _get_ch_info(info)
+     has_neuromag_122_grad, has_csd_coils) = _get_ch_info(info)
     has_vv_meg = has_vv_mag and has_vv_grad
     has_vv_only_mag = has_vv_mag and not has_vv_grad
     has_vv_only_grad = has_vv_grad and not has_vv_mag
@@ -417,6 +426,8 @@ def find_layout(info, ch_type=None, exclude='bads'):
             raise RuntimeError('Cannot make EEG layout, no measurement info '
                                'was passed to `find_layout`')
         return make_eeg_layout(info, exclude=exclude)
+    elif has_csd_coils and ch_type in [None, 'csd']:
+        return make_eeg_layout(info, exclude=exclude, csd=True)
     elif has_4D_mag:
         layout_name = 'magnesWH3600'
     elif has_CTF_grad:
@@ -426,10 +437,11 @@ def find_layout(info, ch_type=None, exclude='bads'):
 
     # If no known layout is found, fall back on automatic layout
     if layout_name is None:
-        xy = _find_topomap_coords(info, picks=range(info['nchan']),
-                                  ignore_overlap=True)
-        return generate_2d_layout(xy, ch_names=info['ch_names'], name='custom',
-                                  normalize=False)
+        picks = _picks_to_idx(info, 'data', exclude=(), with_ref_meg=False)
+        ch_names = [info['ch_names'][pick] for pick in picks]
+        xy = _find_topomap_coords(info, picks=picks, ignore_overlap=True)
+        return generate_2d_layout(xy, ch_names=ch_names, name='custom',
+                                  normalize=True)
 
     layout = read_layout(layout_name)
     if not is_old_vv:
@@ -637,7 +649,7 @@ def _auto_topomap_coords(info, picks, ignore_overlap, to_sphere, sphere):
         positions overlap, an error is thrown.
     to_sphere : bool
         If True, the radial distance of spherical coordinates is ignored, in
-        effect fitting the xyz-coordinates to a sphere. Defaults to True.
+        effect fitting the xyz-coordinates to a sphere.
     sphere : array-like | str
         The head sphere definition.
 
@@ -648,6 +660,7 @@ def _auto_topomap_coords(info, picks, ignore_overlap, to_sphere, sphere):
     """
     from scipy.spatial.distance import pdist, squareform
     sphere = _check_sphere(sphere, info)
+    logger.debug(f'Generating coords using: {sphere}')
 
     picks = _picks_to_idx(info, picks, 'all', exclude=(), allow_empty=False)
     chs = [info['chs'][i] for i in picks]
@@ -718,9 +731,10 @@ def _auto_topomap_coords(info, picks, ignore_overlap, to_sphere, sphere):
         # translate to sphere origin, transform/flatten Z, translate back
         locs3d -= sphere[:3]
         # use spherical (theta, pol) as (r, theta) for polar->cartesian
-        out = _pol_to_cart(_cart_to_sph(locs3d)[:, 1:][:, ::-1])
+        cart_coords = _cart_to_sph(locs3d)
+        out = _pol_to_cart(cart_coords[:, 1:][:, ::-1])
         # scale from radians to mm
-        out *= (sphere[3] / (np.pi / 2.))
+        out *= cart_coords[:, [0]] / (np.pi / 2.)
         out += sphere[:2]
     else:
         out = _pol_to_cart(_cart_to_sph(locs3d))
@@ -792,8 +806,7 @@ def _pair_grad_sensors(info, layout=None, topomap_coords=True, exclude='bads',
     pairs = defaultdict(list)
     grad_picks = pick_types(info, meg='grad', ref_meg=False, exclude=exclude)
 
-    (_, has_vv_grad, _, _, _, _, _, _, _, _, _, has_neuromag_122_grad) = \
-        _get_ch_info(info)
+    _, has_vv_grad, *_, has_neuromag_122_grad, _ = _get_ch_info(info)
 
     for i in grad_picks:
         ch = info['chs'][i]
@@ -907,7 +920,7 @@ def _merge_ch_data(data, ch_type, names, method='rms'):
     if ch_type == 'grad':
         data = _merge_grad_data(data, method)
     else:
-        assert ch_type in ('hbo', 'hbr', 'fnirs_raw', 'fnirs_od')
+        assert ch_type in _FNIRS_CH_TYPES_SPLIT
         data, names = _merge_nirs_data(data, names)
     return data, names
 
@@ -967,6 +980,7 @@ def _merge_nirs_data(data, merged_names):
                 indices = np.append(indices, merged_names.index(sub_ch))
             data[idx] = np.mean(data[np.append(idx, indices)], axis=0)
             to_remove = np.append(to_remove, indices)
+    to_remove = np.unique(to_remove)
     for rem in sorted(to_remove, reverse=True):
         del merged_names[rem]
         data = np.delete(data, rem, 0)
@@ -988,9 +1002,9 @@ def generate_2d_layout(xy, w=.07, h=.05, pad=.02, ch_names=None,
     xy : ndarray, shape (N, 2)
         The xy coordinates of sensor locations.
     w : float
-        The width of each sensor's axis (between 0 and 1)
+        The width of each sensor's axis (between 0 and 1).
     h : float
-        The height of each sensor's axis (between 0 and 1)
+        The height of each sensor's axis (between 0 and 1).
     pad : float
         Portion of the box to reserve for padding. The value can range between
         0.0 (boxes will touch, default) to 1.0 (boxes consist of only padding).

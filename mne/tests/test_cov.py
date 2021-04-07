@@ -21,16 +21,15 @@ from mne import (read_cov, write_cov, Epochs, merge_events,
                  find_events, compute_raw_covariance,
                  compute_covariance, read_evokeds, compute_proj_raw,
                  pick_channels_cov, pick_types, make_ad_hoc_cov,
-                 make_fixed_length_events, create_info)
+                 make_fixed_length_events, create_info, compute_rank)
 from mne.channels import equalize_channels
 from mne.datasets import testing
 from mne.fixes import _get_args
-from mne.io import read_raw_fif, RawArray, read_raw_ctf
-from mne.io.pick import _DATA_CH_TYPES_SPLIT
+from mne.io import read_raw_fif, RawArray, read_raw_ctf, read_info
+from mne.io.pick import _DATA_CH_TYPES_SPLIT, pick_info
 from mne.preprocessing import maxwell_filter
 from mne.rank import _compute_rank_int
-from mne.utils import (requires_sklearn, run_tests_if_main,
-                       catch_logging, assert_snr)
+from mne.utils import requires_sklearn, catch_logging, assert_snr
 
 base_dir = op.join(op.dirname(__file__), '..', 'io', 'tests', 'data')
 cov_fname = op.join(base_dir, 'test-cov.fif')
@@ -50,7 +49,7 @@ ctf_fname = op.join(testing.data_path(download=False), 'CTF',
 def test_compute_whitener(proj, pca):
     """Test properties of compute_whitener."""
     raw = read_raw_fif(raw_fname).crop(0, 3).load_data()
-    raw.pick_types(eeg=True, exclude=())
+    raw.pick_types(meg=True, eeg=True, exclude=())
     if proj:
         raw.apply_proj()
     else:
@@ -96,8 +95,8 @@ def test_cov_mismatch():
         compute_covariance([epochs, epochs_2], on_mismatch='ignore')
         with pytest.raises(RuntimeWarning, match='transform mismatch'):
             compute_covariance([epochs, epochs_2], on_mismatch='warn')
-        pytest.raises(ValueError, compute_covariance, epochs,
-                      on_mismatch='x')
+        with pytest.raises(ValueError, match='Invalid value'):
+            compute_covariance(epochs, on_mismatch='x')
     # This should work
     epochs.info['dev_head_t'] = None
     epochs_2.info['dev_head_t'] = None
@@ -147,7 +146,7 @@ def test_cov_order():
     whitener_2, w_ch_names_2, n_nzero_2 = compute_whitener(
         cov_reorder, info, return_rank=True)
     assert_array_equal(w_ch_names_2, w_ch_names)
-    assert_allclose(whitener_2, whitener)
+    assert_allclose(whitener_2, whitener, rtol=1e-6)
     assert n_nzero == n_nzero_2
     # with pca
     assert n_nzero < whitener.shape[0]
@@ -160,7 +159,7 @@ def test_cov_order():
     evoked = read_evokeds(ave_fname)[0]
     evoked_white = whiten_evoked(evoked, cov)
     evoked_white_2 = whiten_evoked(evoked, cov_reorder)
-    assert_allclose(evoked_white_2.data, evoked_white.data)
+    assert_allclose(evoked_white_2.data, evoked_white.data, atol=1e-7)
 
 
 def _assert_reorder(cov_new, cov_orig, order):
@@ -265,7 +264,8 @@ def test_cov_estimation_on_raw(method, tmpdir):
     else:
         # We explicitly zero out off-diag entries between channel types,
         # so let's just check MEG off-diag entries
-        off_diag = np.triu_indices(len(pick_types(raw.info, exclude=())))
+        off_diag = np.triu_indices(len(pick_types(raw.info, meg=True,
+                                                  exclude=())))
     for other in (cov_mne, cov):
         assert_allclose(np.diag(cov_np), np.diag(other.data), rtol=5e-6)
         assert_allclose(cov_np[off_diag], other.data[off_diag], rtol=4e-3)
@@ -697,7 +697,7 @@ def test_low_rank_cov(raw_epochs_events):
     del reg_r_only_cov, reg_r_cov
 
     # test that rank=306 is same as rank='full'
-    epochs_meg = epochs.copy().pick_types()
+    epochs_meg = epochs.copy().pick_types(meg=True)
     assert len(epochs_meg.ch_names) == 306
     epochs_meg.info.update(bads=[], projs=[])
     cov_full = compute_covariance(epochs_meg, method='oas',
@@ -783,4 +783,25 @@ def test_equalize_channels():
     assert cov2.ch_names == ['CH1', 'CH2']
 
 
-run_tests_if_main()
+def test_compute_whitener_rank():
+    """Test risky rank options."""
+    info = read_info(ave_fname)
+    info = pick_info(info, pick_types(info, meg=True))
+    info['projs'] = []
+    # need a square version because the diag one takes shortcuts in
+    # compute_whitener (users shouldn't even need this function so it's
+    # private)
+    cov = make_ad_hoc_cov(info)._as_square()
+    assert len(cov['names']) == 306
+    _, _, rank = compute_whitener(cov, info, rank=None, return_rank=True)
+    assert rank == 306
+    assert compute_rank(cov, info=info, verbose=True) == dict(meg=rank)
+    cov['data'][-1] *= 1e-14  # trivially rank-deficient
+    _, _, rank = compute_whitener(cov, info, rank=None, return_rank=True)
+    assert rank == 305
+    assert compute_rank(cov, info=info, verbose=True) == dict(meg=rank)
+    # this should emit a warning
+    with pytest.warns(RuntimeWarning, match='exceeds the estimated'):
+        _, _, rank = compute_whitener(cov, info, rank=dict(meg=306),
+                                      return_rank=True)
+    assert rank == 306

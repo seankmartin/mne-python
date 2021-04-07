@@ -3,8 +3,8 @@
 Plot custom topographies for MEG sensors
 ========================================
 
-This example exposes the `iter_topography` function that makes it
-very easy to generate custom sensor topography plots.
+This example exposes the :func:`~mne.viz.iter_topography` function that makes
+it very easy to generate custom sensor topography plots.
 Here we will plot the power spectrum of each channel on a topographic
 layout.
 
@@ -48,8 +48,8 @@ def my_callback(ax, ch_idx):
     two parameters, the axis and the channel or data index.
     """
     ax.plot(freqs, psds[ch_idx], color='red')
-    ax.set_xlabel = 'Frequency (Hz)'
-    ax.set_ylabel = 'Power (dB)'
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Power (dB)')
 
 
 for ax, idx in iter_topography(raw.info,
